@@ -92,6 +92,11 @@ def atomic_write[**P, T, E](
     devuelven antes de escribir, asi que un Err hace COMMIT de una transaccion vacia.
     El supervisor se avisa despues del COMMIT y solo si hubo Ok: con WAL, el proceso
     de aviso solo ve lo confirmado.
+
+    Las dos responsabilidades van juntas a proposito, para forzar ese orden. Si
+    estuvieran en decoradores separados, el orden dependeria de como se apilan en
+    cada metodo, y apilarlos al reves (SIGHUP antes del COMMIT) haria que el
+    proceso de aviso relea el estado viejo sin que nada lo detecte.
     """
 
     def wrapper(self: Tempo, /, *args: P.args, **kwargs: P.kwargs) -> Result[T, E]:

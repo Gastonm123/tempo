@@ -143,6 +143,8 @@ def wrapper(self, /, *args, **kwargs):
     return result
 ```
 
+`@atomic_write` tiene dos responsabilidades, la transacción y el aviso al supervisor, y las reúne a propósito: entre ellas hay una restricción de orden (el `sync()` tiene que ocurrir después del `COMMIT`, ver abajo) y un único decorador la garantiza en los 16 métodos. Con decoradores separados, el orden dependería de cómo se apilan en cada método, y apilarlos al revés haría que el proceso de aviso relea el estado viejo sin que ningún test lo marque.
+
 Es bloqueo pesimista y en SQLite sale casi gratis: la base admite un solo escritor, así que con el lock de escritura tomado antes de leer, nada de lo validado puede cambiar hasta el `COMMIT`. Un segundo comando concurrente espera en su `BEGIN IMMEDIATE`, lee el estado que dejó el primero y valida contra eso:
 
 | Carrera | Resultado del segundo comando |
