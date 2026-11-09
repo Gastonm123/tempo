@@ -50,7 +50,8 @@ La referencia completa está en [docs/cli.md](docs/cli.md).
 
 ## Documentación
 
-- [Contexto y decisiones de diseño](docs/README.md)
+- [Índice de la documentación, desarrollo y tests](docs/README.md)
+- [Contexto y decisiones de diseño](docs/context.md)
 - [Arquitectura](docs/arquitectura.md)
 - [Sesiones: ciclo de vida, pausas, edición y archivado](docs/sesiones.md)
 - [Reportes y exportación](docs/reportes.md)
