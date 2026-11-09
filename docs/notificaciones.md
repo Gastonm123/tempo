@@ -13,7 +13,7 @@ Tres piezas:
 ## `Notifier`
 
 ```python
-Notifier(store, clock, alerter, pause_reminder)
+Notifier(store, clock, alerter, pause_reminder, alarm_duration)
     .tick() -> float | None        # un paso: avisa lo pendiente, devuelve segundos a esperar
     .run(wake: threading.Event)    # loop: tick, clock.wait(wake, timeout), wake.clear()
 ```
@@ -24,15 +24,18 @@ Notifier(store, clock, alerter, pause_reminder)
 |---|---|---|
 | sin sesión abierta | desarma | `None` (espera sin límite) |
 | `running` | arma `(session.id, expires_at)` | segundos hasta `expires_at` |
-| `expired` y armado con ese mismo `(id, expires_at)` | desarma y avisa **Sesión terminada** | `None` |
+| `expired` y armado con ese mismo `(id, expires_at)` | desarma, hace sonar la alarma **Sesión terminada** y anota `(id, now + alarm_duration)` como alarma sonando | segundos hasta el corte de la alarma |
 | `expired` sin armar | nada | `None` |
 | `paused`, pausa abierta con `reminded = 1` | desarma | `None` |
 | `paused`, `now < inicio + pause_reminder` | desarma | segundos hasta `inicio + pause_reminder` |
 | `paused`, `now >= inicio + pause_reminder` | desarma, `mark_pause_reminded(pause.id)`, avisa **Pausa larga** | `None` |
 
+Antes de la tabla, si hay una alarma sonando, `tick` la corta con `alerter.silence()` cuando llegó su corte o cuando su sesión ya no está vencida: no hay sesión abierta, es otra sesión o volvió a `running`. Mientras siga sonando, `tick` devuelve el menor entre lo que indica la tabla y los segundos hasta el corte.
+
 Las reglas que salen de la tabla:
 
 - **El vencimiento se avisa una vez y solo si el proceso lo vio venir.** El arming en memoria evita repetir el aviso en cada `tick` y evita avisar un vencimiento viejo cuando el proceso arranca con la sesión ya vencida. Un `extend` produce un `expires_at` nuevo, que se arma en el siguiente `tick`; un `resume` también.
+- **La alarma de vencimiento suena hasta `alarm_duration` (5 min, `Config.alarm_duration`).** `extend` y `stop` la cortan antes: escriben en la base, mandan `SIGHUP`, y el `tick` siguiente ve la sesión `running` o cerrada. El botón **Detener** del toast la cierra desde Windows; el `silence()` posterior no encuentra nada que sacar y no falla. La alarma sonando vive solo en memoria: si el proceso muere mientras suena, el corte lo hace Windows por el `ExpirationTime` del toast.
 - **La pausa larga se avisa una sola vez por pausa,** también entre reinicios del proceso: el flag `reminded` vive en la base. `pause_reminder` es 1 h (`Config.pause_reminder`).
 
 Textos:
@@ -46,7 +49,7 @@ El título no repite el nombre de la aplicación: con la aplicación registrada 
 
 `run` duerme con `clock.wait(wake, timeout)`. Con `SystemClock` es `Event.wait`, que el handler de `SIGHUP` interrumpe al hacer `wake.set()`; el `tick` siguiente lee el estado nuevo. Si la señal llega entre el `wait` y el `clear()` se pierde, pero da igual: el loop hace `tick` inmediatamente después y la escritura que motivó la señal ya está commiteada.
 
-Una falla del alerter no interrumpe el loop: se escribe en stderr (`tempo notifier: no se pudo avisar: ...`), que va a `notifier.log`.
+Una falla del alerter (aviso, alarma o corte) no interrumpe el loop: se escribe en stderr (`tempo notifier: no se pudo avisar: ...`), que va a `notifier.log`.
 
 ## `ProcessSupervisor`
 
@@ -102,15 +105,27 @@ os.posix_spawn(
 ```python
 class Alerter(Protocol):
     def send(self, title: str, body: str) -> Result[None, AlertFailed]: ...
+    def alarm(self, title: str, body: str, duration: timedelta) -> Result[None, AlertFailed]: ...
+    def silence(self) -> Result[None, AlertFailed]: ...
 ```
 
-`build_alerter(config)` devuelve `NullAlerter` si `TEMPO_NO_NOTIFY=1` y, si no, `FirstWorkingAlerter([WindowsToastAlerter(), NotifySendAlerter()])`, que prueba en orden y devuelve el primer `Ok` o un `AlertFailed` con los motivos de todos.
+`send` es un aviso común. `alarm` suena en loop hasta `silence()` o hasta `duration`. `silence` corta la alarma si hay una sonando y, si no, no hace nada.
+
+`build_alerter(config)` devuelve `NullAlerter` si `TEMPO_NO_NOTIFY=1` y, si no, `FirstWorkingAlerter([WindowsToastAlerter(), NotifySendAlerter()])`. Para `send` y `alarm` prueba en orden y devuelve el primer `Ok` o un `AlertFailed` con los motivos de todos. `silence` se pide a todos, porque no se sabe cuál mostró la alarma.
 
 ### Toast de Windows desde WSL
 
-`WindowsToastAlerter` ejecuta `powershell.exe -NoProfile -NonInteractive -Command <script>` con timeout de 30 s. El script carga `Windows.UI.Notifications` (WinRT), arma un `ToastText02` (título y cuerpo) y lo muestra con `CreateToastNotifier(appId).Show(...)`.
+`WindowsToastAlerter` ejecuta `powershell.exe -NoProfile -NonInteractive -Command <script>` con timeout de 30 s. Los tres scripts comparten un preludio que carga `Windows.UI.Notifications` (WinRT), elige el AppUserModelID y arma el toast a partir de su XML (`ToastGeneric`, título y cuerpo). Cada `powershell.exe` termina enseguida: el toast queda a cargo de Windows.
 
-- Título y cuerpo viajan en variables de entorno (`TEMPO_TITLE`, `TEMPO_BODY`) y no interpolados en el script: no hay que escapar comillas ni caracteres especiales. `WSLENV=TEMPO_TITLE:TEMPO_BODY` hace que WSL las exporte al proceso de Windows.
+| Método | Script |
+|---|---|
+| `send` | Toast común, mostrado con `CreateToastNotifier(appId).Show(...)` |
+| `alarm` | Toast con `scenario="alarm"`, audio `ms-winsoundevent:Notification.Looping.Alarm` en loop y un botón **Detener** (`activationType="system"`, `arguments="dismiss"`). Lleva `Tag = alarm`, `Group = tempo` y `ExpirationTime` = ahora + `duration` |
+| `silence` | `ToastNotificationManager.History.Remove('alarm', 'tempo', appId)` |
+
+- `scenario="alarm"` deja el toast en pantalla y el audio en loop hasta que se cierra. Windows solo respeta ese escenario si el toast tiene al menos un botón.
+- `History.Remove` cierra el toast y corta el audio aunque lo haya mostrado otro `powershell.exe`; si el toast ya no está, no falla. Por eso alcanza con el tag y el grupo y no hace falta mantener vivo el proceso que lo mostró.
+- Título, cuerpo y duración viajan en variables de entorno (`TEMPO_TITLE`, `TEMPO_BODY`, `TEMPO_ALARM_SECONDS`) y no interpolados en el script: no hay que escapar comillas ni caracteres especiales. `WSLENV` lista esas variables para que WSL las exporte al proceso de Windows.
 - Windows solo muestra toasts de aplicaciones registradas, identificadas por un AppUserModelID que define el nombre y el ícono del encabezado. El script usa `tempo` si existe `HKCU:\Software\Classes\AppUserModelId\tempo`, y si no el AUMID de Windows PowerShell, que siempre está registrado (el toast se ve entonces como "Windows PowerShell").
 - Un `powershell.exe` ausente, un código de salida distinto de 0 o un timeout dan `AlertFailed`.
 
@@ -125,4 +140,4 @@ Es una clave del usuario: no requiere administrador. `uninstall.sh` borra la cla
 
 ### `notify-send`
 
-Alternativa para Linux con libnotify. En WSL normalmente no está instalado; queda como segundo intento de la cadena.
+Alternativa para Linux con libnotify. En WSL normalmente no está instalado; queda como segundo intento de la cadena. No tiene alarma en loop: `alarm` muestra un aviso común y `silence` no hace nada.

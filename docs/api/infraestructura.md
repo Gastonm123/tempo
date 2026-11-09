@@ -82,15 +82,23 @@ ProcessSupervisor(pid_path, lock_path, log_path, command, env)
 ```python
 class Alerter(Protocol):
     def send(self, title: str, body: str) -> Result[None, AlertFailed]: ...
+    def alarm(self, title: str, body: str, duration: timedelta) -> Result[None, AlertFailed]: ...
+    def silence(self) -> Result[None, AlertFailed]: ...
 ```
+
+| Método | Contrato |
+|---|---|
+| `send` | Aviso común |
+| `alarm` | Aviso que suena en loop hasta `silence()` o hasta `duration` |
+| `silence` | Corta la alarma sonando; sin alarma, `Ok` |
 
 | Implementación | |
 |---|---|
-| `WindowsToastAlerter` | Toast WinRT vía `powershell.exe` |
-| `NotifySendAlerter` | `notify-send` |
-| `FirstWorkingAlerter(alerters)` | Prueba en orden; `Ok` del primero que funcione o `AlertFailed` con todos los motivos unidos por `; ` |
+| `WindowsToastAlerter` | Toast WinRT vía `powershell.exe`; la alarma es un toast `scenario="alarm"` que `silence` saca por tag y grupo |
+| `NotifySendAlerter` | `notify-send`; `alarm` es un aviso común y `silence` no hace nada |
+| `FirstWorkingAlerter(alerters)` | `send` y `alarm` prueban en orden: `Ok` del primero que funcione o `AlertFailed` con todos los motivos unidos por `; `. `silence` se pide a todos y junta los motivos de los que fallan |
 | `NullAlerter` | Siempre `Ok`, no muestra nada |
-| `RecordingAlerter` | Registra `(title, body)` en `sent` |
+| `RecordingAlerter` | Registra en orden en `events`: `("send", title, body)`, `("alarm", title, body)`, `("silence",)` |
 
 Las implementaciones que ejecutan comandos convierten `OSError`, `TimeoutExpired` (30 s) y códigos de salida distintos de cero en `AlertFailed`. Detalle del toast en [notificaciones.md](../notificaciones.md#toast-de-windows-desde-wsl).
 
@@ -123,6 +131,7 @@ No es una interfaz, es un dato: `@dataclass(frozen=True, slots=True)`.
 | `home` | `~/.local/tempo` (o `$TEMPO_HOME`), expandido y resuelto |
 | `notify_enabled` | `True`; `False` con `TEMPO_NO_NOTIFY=1` |
 | `pause_reminder` | 1 h |
+| `alarm_duration` | 5 min |
 | `list_days` | 7 |
 | `report_days` | 30 |
 

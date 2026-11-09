@@ -13,34 +13,54 @@ class NotifierTest(unittest.TestCase):
         self.alerter = RecordingAlerter()
 
     def notifier(self) -> Notifier:
-        return Notifier(self.rig.store, self.rig.clock, self.alerter, timedelta(hours=1))
+        return Notifier(self.rig.store, self.rig.clock, self.alerter, timedelta(hours=1),
+                        alarm_duration=timedelta(minutes=5))
 
     def advance(self, minutes: int) -> None:
         self.rig.clock.advance(timedelta(minutes=minutes))
 
-    def test_expiry_alert_once_and_rearmed_by_extend(self) -> None:
+    def kinds(self) -> list[str]:
+        return [event[0] for event in self.alerter.events]
+
+    def test_expiry_alarm_once_silenced_and_rearmed_by_extend(self) -> None:
         notifier = self.notifier()
         self.assertIsNone(notifier.tick())  # sin sesion: espera sin limite
         ok(self.rig.tempo.start(self.project.id, HOUR, ""))
         self.assertEqual(notifier.tick(), HOUR)  # despierta justo al vencer
         self.advance(60)
+        self.assertEqual(notifier.tick(), 300)  # despierta para cortar la alarma
+        self.assertEqual(notifier.tick(), 300)
+        _, title, body = self.alerter.events[0]
+        self.assertEqual(title, "Sesión terminada")
+        self.assertTrue(body.startswith("Se cumplió el tiempo de web"))
+        self.advance(5)
         self.assertIsNone(notifier.tick())
-        self.assertIsNone(notifier.tick())
-        self.assertEqual(len(self.alerter.sent), 1)
-        self.assertEqual(self.alerter.sent[0][0], "Sesión terminada")
-        self.assertTrue(self.alerter.sent[0][1].startswith("Se cumplió el tiempo de web"))
+        self.assertEqual(self.kinds(), ["alarm", "silence"])
 
         ok(self.rig.tempo.extend(30 * 60))  # el proceso real recibiria SIGHUP
         self.assertEqual(notifier.tick(), 30 * 60)
         self.advance(30)
         notifier.tick()
-        self.assertEqual(len(self.alerter.sent), 2)
+        self.advance(2)
+        ok(self.rig.tempo.extend(30 * 60))  # mientras suena: la corta
+        self.assertEqual(notifier.tick(), 30 * 60)
+        self.assertEqual(self.kinds(), ["alarm", "silence", "alarm", "silence"])
+
+    def test_stop_silences_alarm(self) -> None:
+        notifier = self.notifier()
+        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        notifier.tick()
+        self.advance(60)
+        notifier.tick()
+        ok(self.rig.tempo.stop(None))
+        self.assertIsNone(notifier.tick())
+        self.assertEqual(self.kinds(), ["alarm", "silence"])
 
     def test_no_alert_for_expiry_not_seen_coming(self) -> None:
         ok(self.rig.tempo.start(self.project.id, HOUR, ""))
         self.advance(90)
         self.notifier().tick()  # el proceso arranco con la sesion ya vencida
-        self.assertEqual(self.alerter.sent, [])
+        self.assertEqual(self.alerter.events, [])
 
     def test_pause_reminder_once_even_after_restart(self) -> None:
         ok(self.rig.tempo.start(self.project.id, HOUR, ""))
@@ -49,10 +69,11 @@ class NotifierTest(unittest.TestCase):
         self.assertEqual(notifier.tick(), HOUR)
         self.advance(60)
         self.assertIsNone(notifier.tick())
-        self.assertEqual([title for title, _ in self.alerter.sent], ["Pausa larga"])
+        self.assertEqual(self.alerter.events[0][:2], ("send", "Pausa larga"))
         self.advance(120)
         self.notifier().tick()  # un proceso nuevo no repite el aviso: quedo en la base
-        self.assertEqual(len(self.alerter.sent), 1)
+        self.assertEqual(len(self.alerter.events), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
