@@ -6,6 +6,7 @@ Pensado para uso personal en Linux; las notificaciones están resueltas para WSL
 
 ```
 $ tempo start
+Proyectos:
   1) web-tienda
   2) app-interna
 Proyecto (número o nombre nuevo): 1

@@ -15,7 +15,7 @@ Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()
 
 ## Interacción
 
-- **Listas.** Se elige por número o escribiendo el nombre exacto. Donde se acepta un valor nuevo (proyecto en `start`, cliente al crear un proyecto), cualquier otro texto no numérico se toma como nombre nuevo. Una respuesta inválida repite la pregunta.
+- **Listas.** Llevan un título arriba (`Proyectos:`, `Clientes:`). Se elige por número o escribiendo el nombre exacto. Donde se acepta un valor nuevo (proyecto en `start`, cliente al crear un proyecto), cualquier otro texto no numérico se toma como nombre nuevo. Una respuesta inválida repite la pregunta.
 - **Confirmaciones.** `s`, `si`, `sí`, `y` o `yes` confirman; `n`, `no` o Enter cancelan.
 - **Valores por defecto.** Se muestran entre corchetes; Enter los conserva.
 - **Duraciones.** `1h`, `90m`, `1h30m`. Una duración inválida repite la pregunta.

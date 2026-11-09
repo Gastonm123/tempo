@@ -23,6 +23,7 @@ class CliTest(unittest.TestCase):
         code, term = self.run_cli(
             "start", answers=("web", "Acme", "Tienda online", "1h30x", "1h30m", "Maquetar"))
         self.assertEqual(code, 0)
+        self.assertIn("Clientes:\n  1) (sin cliente)\nCliente>", term.output)
         self.assertIn("Sesión iniciada en web: 1:30, vence a las 11:30.", term.output)
         project = ok(self.rig.tempo.find_project("web"))
         self.assertEqual((project.client_name, project.description), ("Acme", "Tienda online"))
@@ -30,8 +31,9 @@ class CliTest(unittest.TestCase):
     def test_start_picks_existing_project_by_number(self) -> None:
         ok(self.rig.tempo.add_project("app", None, ""))
         ok(self.rig.tempo.add_project("web", None, ""))
-        code, _ = self.run_cli("start", answers=("2", "1h", ""))
+        code, term = self.run_cli("start", answers=("2", "1h", ""))
         self.assertEqual(code, 0)
+        self.assertEqual(term.lines[:3], ["Proyectos:", "  1) app", "  2) web"])
         self.assertEqual(ok(self.rig.tempo.status()).session.project_name, "web")
 
     def test_start_offers_to_unarchive(self) -> None:

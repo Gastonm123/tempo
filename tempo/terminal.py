@@ -50,8 +50,9 @@ class Terminal(Protocol):
         """Pide un texto. Enter sin escribir nada devuelve `default`."""
         ...
 
-    def choose(self, prompt: str, options: Sequence[str], *, allow_typed: bool) -> Choice:
-        """Muestra una lista numerada y pide elegir un numero.
+    def choose(self, prompt: str, options: Sequence[str], *, title: str,
+               allow_typed: bool) -> Choice:
+        """Muestra `title` y debajo una lista numerada, y pide elegir un numero.
 
         Con allow_typed=True tambien acepta un texto que no este en la lista.
         Repite la pregunta hasta obtener una respuesta valida.
@@ -95,8 +96,9 @@ def read_yes_no(answer: str) -> bool | None:
     return None
 
 
-def choice_lines(options: Sequence[str]) -> list[str]:
-    return [f"  {number}) {option}" for number, option in enumerate(options, start=1)]
+def choice_lines(title: str, options: Sequence[str]) -> list[str]:
+    return [f"{title}:",
+            *(f"  {number}) {option}" for number, option in enumerate(options, start=1))]
 
 
 def choose_hint(allow_typed: bool) -> str:
@@ -122,8 +124,9 @@ class PosixTerminal(Terminal):
         shown = f"{prompt} [{default}]: " if default else f"{prompt}: "
         return input(shown).strip() or default
 
-    def choose(self, prompt: str, options: Sequence[str], *, allow_typed: bool) -> Choice:
-        for line in choice_lines(options):
+    def choose(self, prompt: str, options: Sequence[str], *, title: str,
+               allow_typed: bool) -> Choice:
+        for line in choice_lines(title, options):
             print(line)
         while True:
             choice = read_choice(input(f"{prompt} ({choose_hint(allow_typed)}): "), options,
@@ -180,8 +183,9 @@ class DummyTerminal(Terminal):
     def text(self, prompt: str, default: str = "") -> str:
         return self._next(prompt).strip() or default
 
-    def choose(self, prompt: str, options: Sequence[str], *, allow_typed: bool) -> Choice:
-        self.lines.extend(choice_lines(options))
+    def choose(self, prompt: str, options: Sequence[str], *, title: str,
+               allow_typed: bool) -> Choice:
+        self.lines.extend(choice_lines(title, options))
         while True:
             choice = read_choice(self._next(prompt), options, allow_typed=allow_typed)
             if choice is not None:

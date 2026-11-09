@@ -249,7 +249,7 @@ def pick_client(app: Deps) -> Result[Client | None, DomainError]:
     """Elige el cliente de un proyecto nuevo: uno existente, uno nuevo o ninguno."""
     clients = app.tempo.list_clients()
     options = ["(sin cliente)", *(c.name for c in clients)]
-    match app.terminal.choose("Cliente", options, allow_typed=True):
+    match app.terminal.choose("Cliente", options, title="Clientes", allow_typed=True):
         case Picked(0):
             return Ok(None)
         case Picked(index):
@@ -288,7 +288,8 @@ def pick_project(app: Deps) -> Result[Project, DomainError] | None:
     """Elige el proyecto de una sesion nueva. None = el usuario cancelo."""
     projects = app.tempo.list_projects()
     if projects:
-        choice = app.terminal.choose("Proyecto", [p.name for p in projects], allow_typed=True)
+        choice = app.terminal.choose("Proyecto", [p.name for p in projects], title="Proyectos",
+                                     allow_typed=True)
     else:
         app.terminal.write("Todavía no hay proyectos; creá el primero.")
         choice = Typed(app.terminal.text("Nombre del proyecto"))
