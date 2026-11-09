@@ -103,7 +103,7 @@ En una función con varios `match` sobre resultados distintos hay que declarar `
 ```
 ~/.local/tempo/            # o $TEMPO_HOME
 ├── tempo.db               # SQLite (WAL: además tempo.db-wal y tempo.db-shm)
-├── notifier.pid           # PID del proceso de aviso
+├── notifier.pid           # "PID inicio" del proceso de aviso
 ├── notifier.lock          # flock para no lanzar dos procesos de aviso
 ├── notifier.log           # stdout/stderr del proceso de aviso
 └── reports/               # reportes guardados: tempo-AAAA-MM.csv|md

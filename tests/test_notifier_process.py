@@ -49,11 +49,13 @@ class NotifierProcessTest(unittest.TestCase):
         self.started.append(pid)
         return pid
 
-    def test_launch_writes_pid(self) -> None:
+    def test_pid_file_identifies_the_process(self) -> None:
         pid = self.launch()
-        self.assertEqual(self.config.pid_path.read_text().strip(), str(pid))
-        self.assertTrue(ProcessSupervisor.is_notifier(pid))
-        self.assertFalse(ProcessSupervisor.is_notifier(os.getpid()))  # este proceso no lo es
+        self.assertEqual(self.config.pid_path.read_text().split(),
+                         [str(pid), str(ProcessSupervisor.start_time(pid))])
+        # Mismo PID con otro inicio (un PID reciclado) no es el proceso de aviso.
+        self.config.pid_path.write_text(f"{pid} 1\n")
+        self.assertIsNone(self.supervisor.running_pid())
 
     def test_sighup_reloads_without_terminating(self) -> None:
         # Sin esperar: la senal llega mientras el proceso todavia esta arrancando
@@ -62,7 +64,6 @@ class NotifierProcessTest(unittest.TestCase):
         self.supervisor.sync()
         self.supervisor.sync()
         time.sleep(1.0)
-        self.assertTrue(ProcessSupervisor.is_notifier(pid))
         self.assertEqual(self.supervisor.running_pid(), pid)
 
     def test_relaunch_after_kill(self) -> None:
@@ -72,7 +73,7 @@ class NotifierProcessTest(unittest.TestCase):
         self.assertIsNone(self.supervisor.running_pid())
         new_pid = self.launch()
         self.assertNotEqual(new_pid, pid)
-        self.assertTrue(wait_until(lambda: ProcessSupervisor.is_notifier(new_pid)))
+        self.assertTrue(wait_until(lambda: ProcessSupervisor.start_time(new_pid) is not None))
 
 
 if __name__ == "__main__":

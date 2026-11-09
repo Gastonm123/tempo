@@ -54,15 +54,19 @@ Una falla del alerter no interrumpe el loop: se escribe en stderr (`tempo notifi
 
 ```
 sync():
-    pid = leer notifier.pid
-    si pid vive y es el proceso de aviso:  kill(pid, SIGHUP); fin
+    (pid, inicio) = leer notifier.pid
+    si inicio(pid) == inicio:              kill(pid, SIGHUP); fin
     flock(notifier.lock, LOCK_EX)              # se libera al cerrar el archivo
         si ahora hay uno vivo:                 fin   (otro comando lo lanzó mientras esperábamos)
         pid = posix_spawn(...)
-        escribir pid en notifier.pid
+        escribir "pid inicio(pid)" en notifier.pid
 ```
 
-**Identificación.** `is_notifier(pid)` exige que `os.kill(pid, 0)` no falle (`ProcessLookupError` o `PermissionError` cuentan como "no vivo") y que `/proc/<pid>/cmdline` tenga un argumento que contenga `tempo` y otro igual a `notifier`. Eso descarta un PID reciclado por otro programa y también un proceso zombie, cuyo `cmdline` está vacío.
+**Identificación.** `notifier.pid` guarda `PID inicio`, donde `inicio` es el instante de creación del proceso: el campo 22 de `/proc/<pid>/stat` (`starttime`, en ticks de reloj desde el arranque). `running_pid()` considera vivo el proceso si ese PID existe, no está en estado zombie (`Z`, `X`) y su inicio coincide. Un PID reciclado por otro programa tiene otro inicio. Al leer `stat`, los campos se separan después del último `)`, porque el nombre del proceso (campo 2) puede contener espacios y paréntesis.
+
+El inicio existe desde la creación del proceso y el `exec` no lo cambia. Por eso la identidad no se toma de los argumentos: `/proc/<pid>/cmdline` queda vacío durante un instante mientras el hijo todavía está ejecutando el `exec` del intérprete (del orden de 1 de cada 300 a 1000 lanzamientos, consultando inmediatamente después de `posix_spawn`), y un `sync()` que cayera en esa ventana no reconocería el proceso recién lanzado y lanzaría un segundo.
+
+Si el hijo muere antes de que el supervisor lea su inicio (por ejemplo, por un error al importar), no se escribe `notifier.pid`, y el próximo comando lo relanza.
 
 **Exclusión.** El chequeo y el lanzamiento van bajo `flock` y el PID lo escribe el supervisor antes de soltar el lock, no el proceso hijo. Así un segundo comando que espere el lock siempre encuentra el PID del proceso recién lanzado.
 

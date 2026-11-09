@@ -69,7 +69,7 @@ Asegura que el proceso de aviso esté vivo y le indica que relea la base. Es la 
 ProcessSupervisor(pid_path, lock_path, log_path, command, env)
     .sync()
     .running_pid() -> int | None
-    .is_notifier(pid) -> bool          # staticmethod
+    .start_time(pid) -> int | None     # staticmethod: campo 22 de /proc/<pid>/stat; None si no existe o es zombie
 ```
 
 `cli.notifier_supervisor(config)` arma el comando (`python -m tempo notifier`) y el `PYTHONPATH`. El funcionamiento completo, incluida la carrera del arranque, está en [notificaciones.md](../notificaciones.md#processsupervisor).

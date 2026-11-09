@@ -19,12 +19,17 @@ class Supervisor(Protocol):
 class ProcessSupervisor(Supervisor):
     """Mantiene un unico proceso de aviso, identificado por un archivo de PID.
 
-    - Vivo = existe el PID y /proc/<pid>/cmdline contiene "tempo" y "notifier"
-      (asi un PID reciclado por otro programa no cuenta).
+    - El archivo guarda "PID inicio": el PID y el instante de creacion del
+      proceso (campo 22 de /proc/<pid>/stat, en ticks desde el arranque). El
+      proceso es el nuestro si ese PID existe, no es zombie y tiene el mismo
+      inicio: un PID reciclado por otro programa tiene otro inicio. El inicio
+      existe desde la creacion y no cambia con el exec, a diferencia de
+      /proc/<pid>/cmdline, que queda vacio un instante mientras el hijo ejecuta
+      el interprete.
     - Si esta vivo, le manda SIGHUP para que relea la base.
     - Si no, lo lanza. El chequeo y el lanzamiento van bajo un flock, asi dos
-      comandos simultaneos no lanzan dos procesos. El PID lo escribe el
-      supervisor bajo el mismo lock, antes de soltarlo.
+      comandos simultaneos no lanzan dos procesos. El archivo de PID lo escribe
+      el supervisor bajo el mismo lock, antes de soltarlo.
     """
 
     def __init__(
@@ -41,28 +46,34 @@ class ProcessSupervisor(Supervisor):
         self._command = list(command)
         self._env = dict(env)
 
-    def _read_pid(self) -> int | None:
+    @staticmethod
+    def start_time(pid: int) -> int | None:
+        """Inicio del proceso en ticks desde el arranque; None si no existe o es zombie."""
         try:
-            text = self._pid_path.read_text(encoding="ascii").strip()
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+        except (FileNotFoundError, ProcessLookupError):
+            return None
+        # El campo 2 (nombre) va entre parentesis y puede contener espacios o
+        # parentesis: los campos siguientes empiezan despues del ultimo ")".
+        fields = stat[stat.rindex(")") + 2 :].split()
+        state, start = fields[0], fields[19]  # campos 3 y 22
+        return None if state in ("Z", "X") else int(start)
+
+    def _read_identity(self) -> tuple[int, int] | None:
+        try:
+            parts = self._pid_path.read_text(encoding="ascii").split()
         except FileNotFoundError:
             return None
-        return int(text) if text.isdigit() else None
-
-    @staticmethod
-    def is_notifier(pid: int) -> bool:
-        try:
-            os.kill(pid, 0)  # senal 0: solo pregunta si el proceso existe
-        except (ProcessLookupError, PermissionError):
-            return False
-        try:
-            args = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
-        except FileNotFoundError:  # termino entre las dos consultas
-            return False
-        return any(b"tempo" in a for a in args) and b"notifier" in args
+        if len(parts) != 2 or not all(part.isdigit() for part in parts):
+            return None
+        return int(parts[0]), int(parts[1])
 
     def running_pid(self) -> int | None:
-        pid = self._read_pid()
-        return pid if pid is not None and self.is_notifier(pid) else None
+        identity = self._read_identity()
+        if identity is None:
+            return None
+        pid, start = identity
+        return pid if self.start_time(pid) == start else None
 
     def sync(self) -> None:
         pid = self.running_pid()
@@ -89,7 +100,9 @@ class ProcessSupervisor(Supervisor):
                 # handler queda pendiente en vez de terminarlo (accion por defecto).
                 setsigmask={signal.SIGHUP},
             )
-            self._pid_path.write_text(f"{pid}\n", encoding="ascii")
+            start = self.start_time(pid)
+            if start is not None:  # None: ya murio al arrancar; el proximo comando lo relanza
+                self._pid_path.write_text(f"{pid} {start}\n", encoding="ascii")
 
 
 class FakeSupervisor(Supervisor):

@@ -7,6 +7,16 @@ here="$(cd "$(dirname "$0")" && pwd)"
 bin_dir="${HOME}/.local/bin"
 target="${bin_dir}/tempo"
 
+# Un proceso de aviso de una version anterior sigue corriendo el codigo viejo:
+# se detiene y el proximo comando de tempo lanza el nuevo.
+data="${TEMPO_HOME:-$HOME/.local/tempo}"
+if [ -f "$data/notifier.pid" ]; then
+  pid="$(cut -d' ' -f1 "$data/notifier.pid")"
+  if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "tempo notifier"; then
+    kill "$pid" && echo "Proceso de aviso anterior detenido."
+  fi
+fi
+
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 mkdir -p "$build/tempo"

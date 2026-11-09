@@ -52,7 +52,7 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 
 | Regla | Dónde |
 |---|---|
-| Un solo proceso de aviso a la vez | `ProcessSupervisor`: `flock` + verificación en `/proc` |
+| Un solo proceso de aviso a la vez | `ProcessSupervisor`: `flock` + identidad `(PID, inicio)` de `/proc/<pid>/stat` |
 | El vencimiento se avisa una vez, y solo si el proceso lo vio venir | `Notifier` (estado armado en memoria) |
 | La pausa larga (1 h) se avisa una vez por pausa, también entre reinicios | `Notifier` + `pauses.reminded` |
 | `TEMPO_NO_NOTIFY=1` desactiva las notificaciones | `build_alerter` |
