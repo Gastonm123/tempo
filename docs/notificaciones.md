@@ -42,7 +42,7 @@ Sesión terminada   Se cumplió el tiempo de web (1:30). Usá tempo extend para 
 Pausa larga        La sesión de web lleva 1:00 pausada.
 ```
 
-No llevan el prefijo "tempo": con la aplicación registrada en Windows, el nombre ya aparece en el encabezado del toast.
+El título no repite el nombre de la aplicación: con la aplicación registrada en Windows, el encabezado del toast ya muestra "tempo".
 
 `run` duerme con `clock.wait(wake, timeout)`. Con `SystemClock` es `Event.wait`, que el handler de `SIGHUP` interrumpe al hacer `wake.set()`; el `tick` siguiente lee el estado nuevo. Si la señal llega entre el `wait` y el `clear()` se pierde, pero da igual: el loop hace `tick` inmediatamente después y la escritura que motivó la señal ya está commiteada.
 

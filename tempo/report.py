@@ -22,7 +22,7 @@ from tempo.result import Err, InvalidMonth, Ok, Result
 MONTH_NAMES = (
     "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-)  # fmt: skip
+)
 
 NO_CLIENT = "—"
 

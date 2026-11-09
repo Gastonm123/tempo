@@ -373,7 +373,9 @@ def cmd_resume(app: Deps, args: argparse.Namespace) -> int:
 
 
 def cmd_extend(app: Deps, args: argparse.Namespace) -> int:
-    error: DomainError  # cada `case Err(error)` captura un tipo distinto
+    # mypy fija el tipo de `error` en el primer `case Err(error)` y rechazaria los
+    # siguientes, que capturan otros tipos de falla: se declara con el tipo comun.
+    error: DomainError
     match durations.parse(args.duration):
         case Err(error):
             return fail(app.terminal, error)
@@ -438,7 +440,9 @@ def cmd_list(app: Deps, args: argparse.Namespace) -> int:
 
 def cmd_edit(app: Deps, args: argparse.Namespace) -> int:
     term, tempo = app.terminal, app.tempo
-    error: DomainError  # cada `case Err(error)` captura un tipo distinto
+    # mypy fija el tipo de `error` en el primer `case Err(error)` y rechazaria los
+    # siguientes, que capturan otros tipos de falla: se declara con el tipo comun.
+    error: DomainError
     match tempo.get_session(args.id):
         case Err(error):
             return fail(term, error)
@@ -480,7 +484,9 @@ def cmd_edit(app: Deps, args: argparse.Namespace) -> int:
 
 def cmd_delete(app: Deps, args: argparse.Namespace) -> int:
     term, tempo = app.terminal, app.tempo
-    error: DomainError  # cada `case Err(error)` captura un tipo distinto
+    # mypy fija el tipo de `error` en el primer `case Err(error)` y rechazaria los
+    # siguientes, que capturan otros tipos de falla: se declara con el tipo comun.
+    error: DomainError
     match tempo.get_session(args.id):
         case Err(error):
             return fail(term, error)
@@ -644,7 +650,9 @@ def cmd_client_unarchive(app: Deps, args: argparse.Namespace) -> int:
 
 def cmd_report(app: Deps, args: argparse.Namespace) -> int:
     term, tempo = app.terminal, app.tempo
-    error: DomainError  # cada `case Err(error)` captura un tipo distinto
+    # mypy fija el tipo de `error` en el primer `case Err(error)` y rechazaria los
+    # siguientes, que capturan otros tipos de falla: se declara con el tipo comun.
+    error: DomainError
     match find_projects(tempo, args.project):
         case Err(error):
             return fail(term, error)
@@ -675,7 +683,9 @@ def cmd_report(app: Deps, args: argparse.Namespace) -> int:
 
 def export(app: Deps, args: argparse.Namespace, projects: list[Project] | None) -> int:
     term, tempo = app.terminal, app.tempo
-    error: DomainError  # cada `case Err(error)` captura un tipo distinto
+    # mypy fija el tipo de `error` en el primer `case Err(error)` y rechazaria los
+    # siguientes, que capturan otros tipos de falla: se declara con el tipo comun.
+    error: DomainError
     match parse_month(args.month, tempo.local(tempo.now())):
         case Err(error):
             return fail(term, error)
