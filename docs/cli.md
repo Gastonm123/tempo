@@ -31,7 +31,7 @@ Interactivo, sin argumentos. Falla de entrada si ya hay una sesión activa.
    - Un nombre de proyecto archivado ofrece desarchivarlo (y a su cliente, si también lo está).
    - Un nombre nuevo crea el proyecto: pide **Cliente** (`(sin cliente)`, uno existente o uno nuevo) y **Descripción del proyecto** (opcional).
 2. **Duración**.
-3. **Trabajo a realizar** (opcional).
+3. **Trabajo de esta sesión** (opcional).
 
 ```
 Sesión iniciada en web: 1:30, vence a las 11:30.

@@ -10,7 +10,7 @@ $ tempo start
   2) app-interna
 Proyecto (número o nombre nuevo): 1
 Duración (p. ej. 1h, 90m, 1h30m): 1h30m
-Trabajo a realizar: Checkout con Mercado Pago
+Trabajo de esta sesión: Checkout con Mercado Pago
 Sesión iniciada en web-tienda: 1:30, vence a las 11:30.
 
 $ tempo status
@@ -35,7 +35,7 @@ Los datos viven en `~/.local/tempo/` (base SQLite, reportes guardados y archivos
 
 | Comando | |
 |---|---|
-| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo a realizar |
+| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo de esta sesión |
 | `tempo status` | Estado y tiempo restante de la sesión activa |
 | `tempo pause` / `resume` | Pausa y reanuda; el tiempo pausado no cuenta |
 | `tempo extend 30m` | Suma tiempo, incluso a una sesión vencida |
