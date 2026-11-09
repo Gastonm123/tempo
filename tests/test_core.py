@@ -1,5 +1,15 @@
+import tempfile
+import threading
+import time
 import unittest
 from datetime import timedelta
+from pathlib import Path
+
+from tempo.clock import FakeClock
+from tempo.core import Tempo
+from tempo.db import SqliteStore
+from tempo.store_files import MemoryReportStore
+from tempo.supervisor import FakeSupervisor
 
 from tempo.result import (
     AlreadyPaused,
@@ -229,6 +239,35 @@ class ClientsProjectsTest(unittest.TestCase):
         found = ok(self.tempo.find_projects(["tienda", "blog"]))
         self.assertEqual([p.name for p in found], ["tienda", "blog"])
         self.assertIsInstance(self.tempo.find_projects(["tienda", "nope"]), Err)
+
+
+class ConcurrencyTest(unittest.TestCase):
+    """La validacion corre dentro de BEGIN IMMEDIATE: otro escritor no puede
+    cambiar el estado entre la validacion y la escritura."""
+
+    def test_pause_waits_for_concurrent_writer_and_revalidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tempo.db"
+            other = SqliteStore(path)
+            project = ok(other.add_project("web", None, ""))
+            session = ok(other.add_session(project.id, "", at(11, 9, 10), HOUR))
+            results: list[object] = []
+
+            def pause_from_another_connection() -> None:
+                store = SqliteStore(path)  # sqlite3: una conexion por hilo
+                tempo = Tempo(store, FakeClock(at(11, 9, 10, 30)), FakeSupervisor(),
+                              saved_reports=MemoryReportStore(), loose_reports=MemoryReportStore())
+                results.append(tempo.pause())
+                store.close()
+
+            with other.transaction():  # el otro escritor toma el lock y pausa
+                other.open_pause(session.id, at(11, 9, 10, 20))
+                worker = threading.Thread(target=pause_from_another_connection)
+                worker.start()
+                time.sleep(0.3)  # el hilo queda esperando el lock en BEGIN IMMEDIATE
+            worker.join(timeout=5)
+            other.close()
+            self.assertEqual(results, [Err(AlreadyPaused(at(11, 9, 10, 20)))])
 
 
 if __name__ == "__main__":

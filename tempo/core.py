@@ -10,11 +10,12 @@ una escritura a medias que haya que deshacer.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import functools
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
-from typing import Literal
+from typing import Concatenate, Literal
 
 from tempo import sessions as calc
 from tempo.clock import Clock
@@ -79,6 +80,34 @@ def clean_name(text: str) -> Result[str, InvalidName]:
     return Ok(name) if name else Err(InvalidName(text))
 
 
+def atomic_write[**P, T, E](
+    method: Callable[Concatenate[Tempo, P], Result[T, E]],
+) -> Callable[Concatenate[Tempo, P], Result[T, E]]:
+    """Escritura atomica de Tempo: transaccion y aviso al supervisor, en ese orden.
+
+    Corre el metodo completo (lectura, validacion y escritura) en una sola transaccion.
+
+    BEGIN IMMEDIATE toma el lock de escritura antes de leer: lo validado no puede
+    cambiar hasta el COMMIT, porque SQLite admite un solo escritor. Las fallas se
+    devuelven antes de escribir, asi que un Err hace COMMIT de una transaccion vacia.
+    El supervisor se avisa despues del COMMIT y solo si hubo Ok: con WAL, el proceso
+    de aviso solo ve lo confirmado.
+    """
+
+    def wrapper(self: Tempo, /, *args: P.args, **kwargs: P.kwargs) -> Result[T, E]:
+        with self._store.transaction():
+            result = method(self, *args, **kwargs)
+        match result:
+            case Ok():
+                self._supervisor.sync()
+            case Err():
+                pass
+        return result
+
+    functools.update_wrapper(wrapper, method)  # nombre y docstring; el tipo no cambia
+    return wrapper
+
+
 class Tempo:
     def __init__(
         self,
@@ -127,6 +156,16 @@ class Tempo:
         until = session.end_at if session.end_at is not None else self._clock.now()
         return calc.paused_seconds(session.pauses, until)
 
+    # --- Proceso de aviso ---------------------------------------------------
+
+    def ensure_notifier(self) -> None:
+        """Asegura que el proceso de aviso este vivo, aunque no haya escrituras.
+
+        La CLI lo llama al inicio de cada comando: asi un proceso que murio (por
+        ejemplo al reiniciar WSL) se relanza tambien con `status`, `list` o `report`.
+        """
+        self._supervisor.sync()
+
     # --- Sesion activa ------------------------------------------------------
 
     def _active(self) -> Result[ActiveStatus, NoActiveSession]:
@@ -149,6 +188,7 @@ class Tempo:
     def status(self) -> Result[ActiveStatus, NoActiveSession]:
         return self._active()
 
+    @atomic_write
     def start(
         self, project_id: int, duration_s: int, description: str
     ) -> Result[ActiveStatus, StartError]:
@@ -157,17 +197,16 @@ class Tempo:
             return Err(ProjectNotFound(str(project_id)))
         if project.archived:
             return Err(ProjectArchived(project.name))
-        with self._store.transaction():
-            added = self._store.add_session(
-                project_id, description.strip(), self._clock.now(), duration_s
-            )
+        added = self._store.add_session(
+            project_id, description.strip(), self._clock.now(), duration_s
+        )
         match added:
             case Err():
                 return added
             case Ok(session):
-                self._supervisor.sync()
                 return Ok(self._status_of(session.id))
 
+    @atomic_write
     def pause(self) -> Result[ActiveStatus, PauseError]:
         match self._active():
             case Err() as missing:
@@ -180,11 +219,10 @@ class Tempo:
         if active.state.kind == "paused":
             assert active.state.paused_since is not None
             return Err(AlreadyPaused(active.state.paused_since))
-        with self._store.transaction():
-            self._store.open_pause(active.session.id, self._clock.now())
-        self._supervisor.sync()
+        self._store.open_pause(active.session.id, self._clock.now())
         return Ok(self._status_of(active.session.id))
 
+    @atomic_write
     def resume(self) -> Result[ActiveStatus, NoActiveSession | NotPaused]:
         match self._active():
             case Err() as missing:
@@ -193,11 +231,10 @@ class Tempo:
                 pass
         if active.state.kind != "paused":
             return Err(NotPaused())
-        with self._store.transaction():
-            self._store.close_pause(active.session.id, self._clock.now())
-        self._supervisor.sync()
+        self._store.close_pause(active.session.id, self._clock.now())
         return Ok(self._status_of(active.session.id))
 
+    @atomic_write
     def extend(self, seconds: int) -> Result[ActiveStatus, NoActiveSession]:
         """Suma tiempo en cualquier estado. Si ya vencio, el hueco no cuenta."""
         match self._active():
@@ -207,21 +244,20 @@ class Tempo:
                 pass
         session = active.session
         now = self._clock.now()
-        with self._store.transaction():
-            if active.state.kind == "expired":
-                assert active.state.expires_at is not None
-                self._store.add_closed_pause(session.id, active.state.expires_at, now)
-            self._store.update_session(
-                session.id,
-                project_id=session.project_id,
-                description=session.description,
-                start_at=session.start_at,
-                duration_s=session.duration_s + seconds,
-                end_at=None,
-            )
-        self._supervisor.sync()
+        if active.state.kind == "expired":
+            assert active.state.expires_at is not None
+            self._store.add_closed_pause(session.id, active.state.expires_at, now)
+        self._store.update_session(
+            session.id,
+            project_id=session.project_id,
+            description=session.description,
+            start_at=session.start_at,
+            duration_s=session.duration_s + seconds,
+            end_at=None,
+        )
         return Ok(self._status_of(session.id))
 
+    @atomic_write
     def stop(self, description: str | None) -> Result[Session, NoActiveSession]:
         """Cierra la sesion. Fin = ahora, o el vencimiento si ya vencio.
 
@@ -236,18 +272,16 @@ class Tempo:
         end = calc.effective_end(
             session.start_at, session.duration_s, session.pauses, self._clock.now()
         )
-        with self._store.transaction():
-            if active.state.kind == "paused":
-                self._store.close_pause(session.id, end)
-            self._store.update_session(
-                session.id,
-                project_id=session.project_id,
-                description=session.description if description is None else description.strip(),
-                start_at=session.start_at,
-                duration_s=session.duration_s,
-                end_at=end,
-            )
-        self._supervisor.sync()
+        if active.state.kind == "paused":
+            self._store.close_pause(session.id, end)
+        self._store.update_session(
+            session.id,
+            project_id=session.project_id,
+            description=session.description if description is None else description.strip(),
+            start_at=session.start_at,
+            duration_s=session.duration_s,
+            end_at=end,
+        )
         stopped = self._store.get_session(session.id)
         assert stopped is not None
         return Ok(stopped)
@@ -272,6 +306,7 @@ class Tempo:
     def is_month_locked(self, month: str) -> bool:
         return self._store.is_month_locked(month)
 
+    @atomic_write
     def edit_session(
         self,
         session_id: int,
@@ -300,21 +335,20 @@ class Tempo:
             for p in session.pauses
             if p.end is not None and p.end > start_at and p.start < end_at
         ]
-        with self._store.transaction():
-            self._store.update_session(
-                session_id,
-                project_id=project_id,
-                description=description.strip(),
-                start_at=start_at,
-                duration_s=session.duration_s,
-                end_at=end_at,
-            )
-            self._store.replace_pauses(session_id, pauses)
-        self._supervisor.sync()
+        self._store.update_session(
+            session_id,
+            project_id=project_id,
+            description=description.strip(),
+            start_at=start_at,
+            duration_s=session.duration_s,
+            end_at=end_at,
+        )
+        self._store.replace_pauses(session_id, pauses)
         edited = self._store.get_session(session_id)
         assert edited is not None
         return Ok(edited)
 
+    @atomic_write
     def delete_session(self, session_id: int) -> Result[None, DeleteError]:
         session = self._store.get_session(session_id)
         if session is None:
@@ -322,22 +356,19 @@ class Tempo:
         month = self.month_of(session.start_at)
         if self._store.is_month_locked(month):
             return Err(MonthLocked(month))
-        with self._store.transaction():
-            self._store.delete_session(session_id)
-        self._supervisor.sync()
+        self._store.delete_session(session_id)
         return Ok(None)
 
     # --- Clientes -----------------------------------------------------------
 
+    @atomic_write
     def add_client(self, name: str) -> Result[Client, InvalidName | NameTaken]:
         match clean_name(name):
             case Err() as invalid:
                 return invalid
             case Ok(clean):
                 pass
-        with self._store.transaction():
-            written = self._store.add_client(clean)
-        self._supervisor.sync()
+        written = self._store.add_client(clean)
         return written
 
     def find_client(self, name: str) -> Result[Client, ClientNotFound]:
@@ -347,6 +378,7 @@ class Tempo:
     def list_clients(self, *, include_archived: bool = False) -> list[Client]:
         return self._store.list_clients(include_archived=include_archived)
 
+    @atomic_write
     def rename_client(
         self, client_id: int, name: str
     ) -> Result[None, ClientNotFound | InvalidName | NameTaken]:
@@ -357,15 +389,14 @@ class Tempo:
                 return invalid
             case Ok(clean):
                 pass
-        with self._store.transaction():
-            written = self._store.rename_client(client_id, clean)
-        self._supervisor.sync()
+        written = self._store.rename_client(client_id, clean)
         return written
 
     def client_projects(self, client_id: int) -> list[Project]:
         """Proyectos activos de un cliente."""
         return self._store.list_projects(include_archived=False, client_id=client_id)
 
+    @atomic_write
     def archive_client(
         self, client_id: int, *, cascade: bool
     ) -> Result[tuple[Project, ...], ClientNotFound | ClientHasActiveProjects]:
@@ -376,24 +407,22 @@ class Tempo:
         projects = tuple(self.client_projects(client_id))
         if projects and not cascade:
             return Err(ClientHasActiveProjects(tuple(p.name for p in projects)))
-        with self._store.transaction():
-            for project in projects:
-                self._store.set_project_archived(project.id, True)
-            self._store.set_client_archived(client_id, True)
-        self._supervisor.sync()
+        for project in projects:
+            self._store.set_project_archived(project.id, True)
+        self._store.set_client_archived(client_id, True)
         return Ok(projects)
 
+    @atomic_write
     def unarchive_client(self, client_id: int) -> Result[None, ClientNotFound]:
         """Reactiva solo el cliente; sus proyectos se reactivan uno por uno."""
         if self._store.get_client(client_id) is None:
             return Err(ClientNotFound(str(client_id)))
-        with self._store.transaction():
-            self._store.set_client_archived(client_id, False)
-        self._supervisor.sync()
+        self._store.set_client_archived(client_id, False)
         return Ok(None)
 
     # --- Proyectos ----------------------------------------------------------
 
+    @atomic_write
     def add_project(
         self, name: str, client_id: int | None, description: str
     ) -> Result[Project, InvalidName | NameTaken | ClientNotFound | ClientArchived]:
@@ -408,9 +437,7 @@ class Tempo:
                 return Err(ClientNotFound(str(client_id)))
             if client.archived:
                 return Err(ClientArchived(client.name))
-        with self._store.transaction():
-            written = self._store.add_project(clean, client_id, description.strip())
-        self._supervisor.sync()
+        written = self._store.add_project(clean, client_id, description.strip())
         return written
 
     def find_project(self, name: str) -> Result[Project, ProjectNotFound]:
@@ -430,6 +457,7 @@ class Tempo:
     def list_projects(self, *, include_archived: bool = False) -> list[Project]:
         return self._store.list_projects(include_archived=include_archived)
 
+    @atomic_write
     def rename_project(
         self, project_id: int, name: str
     ) -> Result[None, ProjectNotFound | InvalidName | NameTaken]:
@@ -440,19 +468,17 @@ class Tempo:
                 return invalid
             case Ok(clean):
                 pass
-        with self._store.transaction():
-            renamed = self._store.rename_project(project_id, clean)
-        self._supervisor.sync()
+        renamed = self._store.rename_project(project_id, clean)
         return renamed
 
+    @atomic_write
     def archive_project(self, project_id: int) -> Result[None, ProjectNotFound]:
         if self._store.get_project(project_id) is None:
             return Err(ProjectNotFound(str(project_id)))
-        with self._store.transaction():
-            self._store.set_project_archived(project_id, True)
-        self._supervisor.sync()
+        self._store.set_project_archived(project_id, True)
         return Ok(None)
 
+    @atomic_write
     def unarchive_project(
         self, project_id: int, *, with_client: bool
     ) -> Result[None, ProjectNotFound | ClientArchived]:
@@ -464,11 +490,9 @@ class Tempo:
         client = None if project.client_id is None else self._store.get_client(project.client_id)
         if client is not None and client.archived and not with_client:
             return Err(ClientArchived(client.name))
-        with self._store.transaction():
-            if client is not None and client.archived:
-                self._store.set_client_archived(client.id, False)
-            self._store.set_project_archived(project_id, False)
-        self._supervisor.sync()
+        if client is not None and client.archived:
+            self._store.set_client_archived(client.id, False)
+        self._store.set_project_archived(project_id, False)
         return Ok(None)
 
     # --- Reportes -----------------------------------------------------------
@@ -501,6 +525,7 @@ class Tempo:
             return Err(EmptyMonth(month))
         return Ok(self.report(start, end, projects))
 
+    @atomic_write
     def export_month(self, month: str, fmt: Format) -> Result[Path, ExportError]:
         """Reporte guardado de todos los proyectos. Sobrescribe si ya existe y
         bloquea el mes para ediciones."""
@@ -510,12 +535,10 @@ class Tempo:
             case Ok(report):
                 pass
         content = render_to_text(RENDERERS[fmt], report)
-        # El registro y el archivo van juntos: si escribir el archivo explota,
-        # la transaccion se deshace y el mes no queda bloqueado.
-        with self._store.transaction():
-            self._store.add_export(month, self._clock.now())
-            saved = self._saved_reports.save(f"tempo-{month}.{fmt}", content, overwrite=True)
-        self._supervisor.sync()
+        # El registro y el archivo van en la misma transaccion (@atomic_write): si escribir
+        # el archivo explota, el ROLLBACK descarta la fila y el mes no queda bloqueado.
+        self._store.add_export(month, self._clock.now())
+        saved = self._saved_reports.save(f"tempo-{month}.{fmt}", content, overwrite=True)
         match saved:
             case Ok(path):
                 return Ok(path)

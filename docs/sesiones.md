@@ -61,7 +61,7 @@ stateDiagram-v2
 
 ## Operaciones sobre la sesión activa
 
-Todas siguen el mismo patrón: leer el estado con `store.active_session()` y `session_state`, validar, escribir dentro de `store.transaction()` (`BEGIN IMMEDIATE`), llamar a `supervisor.sync()` y devolver el estado releído de la base. Las validaciones se evalúan en el orden en que aparecen en las tablas.
+Todas siguen el mismo patrón, dentro de una única transacción `BEGIN IMMEDIATE` (`@atomic_write`): leer el estado con `store.active_session()` y `session_state`, validar, escribir y releer el resultado. Después del `COMMIT`, y solo si el resultado es `Ok`, se llama a `supervisor.sync()`. Las validaciones se evalúan en el orden en que aparecen en las tablas.
 
 ### `start(project_id, duration_s, description) -> Result[ActiveStatus, StartError]`
 
@@ -115,16 +115,7 @@ La CLI pasa siempre un string: muestra la descripción actual como default y Ent
 
 ### Concurrencia
 
-Las escrituras son atómicas y serializadas por `BEGIN IMMEDIATE` con `busy_timeout = 5000` ms. Pero la validación se hace **antes** de abrir la transacción, así que dos comandos simultáneos sobre la misma sesión pueden validar el mismo estado. La base mantiene sus invariantes y el segundo comando choca con un índice:
-
-| Carrera | Resultado del segundo comando |
-|---|---|
-| dos `start` | `IntegrityError` de `one_active`, traducido a `SessionAlreadyActive` |
-| dos `pause` | `IntegrityError` de `one_open_pause`, **no traducido**: termina con traceback |
-| dos `resume` | el segundo `UPDATE` no encuentra pausa abierta y no hace nada; devuelve `Ok` |
-| `stop` y `extend` | gana el último en escribir; `extend` puede reabrir lógicamente una sesión recién cerrada al reescribir `end_at = NULL` |
-
-Para un uso personal desde una terminal a la vez esto no ocurre en la práctica. Cerrarlo del todo requiere validar dentro de la transacción.
+La validación y la escritura de cada operación corren en una sola transacción `BEGIN IMMEDIATE` (`@atomic_write`), así que dos comandos simultáneos sobre la misma sesión se serializan: el segundo espera el lock y valida contra el estado que dejó el primero. El detalle, la tabla de carreras y el riesgo aceptado en `edit` están en [persistencia](api/persistencia.md#concurrencia).
 
 ## Sesiones cerradas
 
@@ -146,7 +137,7 @@ pausa' = [max(inicio_p, start_at), min(fin_p, end_at)]   para toda pausa con fin
 
 Las que quedan afuera se descartan, y las reescritas pierden el flag `reminded` (irrelevante en una sesión cerrada). `duration_s` no cambia: es la duración planificada.
 
-La CLI verifica el bloqueo del mes antes de preguntar, pide cada campo con el valor actual como default (fechas `AAAA-MM-DD HH:MM`, hora local) y resuelve el proyecto por nombre.
+La CLI verifica el bloqueo del mes antes de preguntar, pide cada campo con el valor actual como default (fechas `AAAA-MM-DD HH:MM`, hora local) y resuelve el proyecto por nombre. Si otro proceso modifica la sesión mientras la persona responde, la edición lo pisa: es un [riesgo aceptado](api/persistencia.md#riesgo-aceptado-edición-concurrente).
 
 ### `delete_session(id) -> Result[None, SessionNotFound | MonthLocked]`
 

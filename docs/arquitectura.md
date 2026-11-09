@@ -92,7 +92,7 @@ Reglas:
 
 - Las excepciones de la stdlib se convierten en `Err` solo en el borde: `IntegrityError` de la regla `one_active` pasa a `SessionAlreadyActive`, `FileExistsError` a `FileExists`, un `ValueError` de `strptime` a `InvalidDate`.
 - Una excepción que no corresponde a una falla esperable se vuelve a lanzar.
-- `Tempo` valida todo antes de escribir, de modo que una operación nunca deja escrituras a medias que haya que deshacer.
+- `Tempo` valida todo antes de escribir, de modo que una operación nunca deja escrituras a medias que haya que deshacer. La validación corre dentro de la misma transacción que la escritura (`@atomic_write`), así que no puede quedar desactualizada por otro proceso.
 - No hay resultados parciales: una falla siempre es un `Err` con el motivo.
 - Las únicas excepciones atrapadas fuera del borde son `KeyboardInterrupt` y `EOFError` en `cli.entry()`, que muestran "Cancelado." y salen con 130.
 

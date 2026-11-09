@@ -806,6 +806,7 @@ def main(argv: Sequence[str] | None = None, deps: Deps | None = None) -> int:
             return serve_notifier(config)
         deps = build_deps(config)
     app = deps
+    app.tempo.ensure_notifier()
     handler: Callable[[Deps, argparse.Namespace], int] = args.handler
     return handler(app, args)
 

@@ -17,11 +17,17 @@ Contrato:
 
 - No pregunta ni imprime. Las decisiones del usuario son parámetros obligatorios de solo palabra clave (`cascade`, `with_client`).
 - Las fallas esperables se devuelven como `Err` con un tipo concreto. Ver la tabla al final.
-- Valida antes de escribir y agrupa las escrituras de cada operación en una transacción.
-- Después de cada operación que escribe llama a `supervisor.sync()`, para que el proceso de aviso relea la base. Las lecturas no lo llaman.
+- Cada operación que escribe corre completa, validación incluida, en una transacción `BEGIN IMMEDIATE` (`@atomic_write`) y valida antes de la primera escritura. Ver [concurrencia](persistencia.md#concurrencia).
+- Después de cada operación que escribe llama a `supervisor.sync()`, para que el proceso de aviso relea la base. Las lecturas no lo llaman; para eso está `ensure_notifier()`.
 - La hora local es la zona del reloj inyectado (`clock.now().tzinfo`), no la del sistema. En los tests eso hace los resultados independientes de la máquina.
 
 Los detalles de comportamiento de cada operación están en [sesiones.md](../sesiones.md) y [reportes.md](../reportes.md); acá van las firmas y lo que devuelven.
+
+## Proceso de aviso
+
+| Método | |
+|---|---|
+| `ensure_notifier() -> None` | `supervisor.sync()` sin escribir nada. La CLI lo llama al inicio de cada comando, así un proceso de aviso caído se relanza también con una lectura |
 
 ## Tiempo
 

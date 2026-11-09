@@ -123,12 +123,50 @@ La versión del esquema vive en `PRAGMA user_version`. Si es 0, `_migrate` crea 
 
 `transaction()` devuelve un context manager:
 
-- Abre `BEGIN IMMEDIATE`, que toma el lock de escritura al empezar. Si otro proceso lo tiene, espera hasta `busy_timeout`. Así la operación nunca falla a mitad de camino por lock.
+- Abre `BEGIN IMMEDIATE`, que toma el lock de escritura de la base al empezar, no en la primera escritura. Si otro proceso lo tiene, espera hasta `busy_timeout`; pasado ese plazo lanza `sqlite3.OperationalError` (no se traduce: es inesperado).
 - Si ya hay una transacción abierta en la conexión, se une a ella sin abrir otra.
 - Ante cualquier excepción hace `ROLLBACK` y la vuelve a lanzar.
-- Al salir normalmente hace `COMMIT`.
+- Al salir normalmente hace `COMMIT`, aunque no se haya escrito nada.
 
 Si el proceso muere con una transacción abierta, SQLite la descarta al reabrir la base.
+
+### Concurrencia
+
+Cada operación de `Tempo` que escribe está decorada con `@atomic_write`, que corre el método completo, **lectura y validación incluidas**, dentro de una sola `transaction()`:
+
+```python
+def wrapper(self, /, *args, **kwargs):
+    with self._store.transaction():          # BEGIN IMMEDIATE
+        result = method(self, *args, **kwargs)
+    if result is Ok:                         # después del COMMIT
+        self._supervisor.sync()
+    return result
+```
+
+Es bloqueo pesimista y en SQLite sale casi gratis: la base admite un solo escritor, así que con el lock de escritura tomado antes de leer, nada de lo validado puede cambiar hasta el `COMMIT`. Un segundo comando concurrente espera en su `BEGIN IMMEDIATE`, lee el estado que dejó el primero y valida contra eso:
+
+| Carrera | Resultado del segundo comando |
+|---|---|
+| dos `start` | `SessionAlreadyActive` |
+| dos `pause` | `AlreadyPaused` |
+| dos `resume` | `NotPaused` |
+| `stop` y `extend` | el que llega segundo encuentra la sesión cerrada: `NoActiveSession` |
+| `edit` o `delete` y un export del mismo mes | si el export confirma primero, `MonthLocked`; si no, el export ve la sesión ya editada o borrada |
+
+Detalles que sostienen la garantía:
+
+- Las fallas se detectan antes de la primera escritura, así que un `Err` hace `COMMIT` de una transacción vacía; nunca hay que deshacer escrituras parciales.
+- El supervisor se avisa después del `COMMIT`. Con WAL, el proceso de aviso solo ve lo confirmado: un `SIGHUP` previo al `COMMIT` lo haría releer el estado viejo.
+- WAL también evita que el lock bloquee a los lectores: el proceso de aviso, `status`, `list` y `report` leen mientras otro proceso escribe.
+- El lock se mantiene lo que dura la validación y la escritura, del orden de milisegundos. En `export_month` incluye el render del reporte y la escritura del archivo, porque el bloqueo del mes tiene que registrarse sobre exactamente las filas que se exportaron.
+
+`tests/test_core.py::ConcurrencyTest` reproduce la carrera de dos `pause` con dos conexiones a la misma base: una toma el lock y abre una pausa mientras la otra espera; la segunda debe devolver `AlreadyPaused`. Con la validación fuera de la transacción, el test termina en `IntegrityError` de `one_open_pause`.
+
+#### Riesgo aceptado: edición concurrente
+
+`tempo edit` es la única operación que lee, espera a la persona y recién después escribe. La CLI muestra los valores actuales, la persona responde y entonces llama a `edit_session` con los cuatro campos completos. `@atomic_write` protege la llamada, pero no el intervalo en que la persona está escribiendo. Si en ese lapso otro proceso modifica la misma sesión, por ejemplo otro `edit`, `edit_session` reescribe proyecto, descripción, inicio y fin con lo que se cargó, y el cambio intermedio se pierde. Las reglas de bloqueo se siguen validando dentro de la transacción: un mes exportado mientras tanto da `MonthLocked`.
+
+Es un riesgo aceptado. El peor caso es que una escritura sobre una sesión cerrada pise a otra (last write wins), sin corromper la base ni violar ninguna invariante. Cerrarlo requeriría bloqueo optimista: una columna `version` en `sessions`, incrementada en cada escritura de la sesión y de sus pausas, y un `UPDATE ... WHERE id = ? AND version = ?` con verificación de `rowcount`. No se justifica para una herramienta de un solo usuario.
 
 ## `Store`
 

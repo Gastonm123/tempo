@@ -92,14 +92,15 @@ En ambos el comando solo escribe el archivo; el reporte no se imprime.
 ### Reporte guardado y bloqueo
 
 ```python
-content = render_to_text(RENDERERS[fmt], report)      # fuera de la transacción
-with store.transaction():
+@atomic_write                             # BEGIN IMMEDIATE ... COMMIT; sync() si Ok
+def export_month(self, month, fmt):
+    report = month_report(month, None)    # validación y lectura, con el lock tomado
+    content = render_to_text(RENDERERS[fmt], report)
     store.add_export(month, now)
     saved_reports.save(f"tempo-{month}.{fmt}", content, overwrite=True)
-supervisor.sync()
 ```
 
-El registro y la escritura van en la misma transacción: si `save` lanza una excepción (disco lleno, permisos), el `ROLLBACK` descarta la fila y el mes no queda bloqueado. El archivo, en cambio, puede quedar truncado, porque el modo `"w"` lo vacía al abrirlo; un export posterior lo reescribe. Con `overwrite=True` el store no puede devolver `FileExists`; si lo hiciera, `export_month` lanza `AssertionError` (es un error de programación, no una falla esperable).
+Validación, lectura, registro y escritura del archivo van en la misma transacción. Ninguna edición o borrado concurrente puede colarse entre las filas exportadas y el bloqueo del mes: si `save` lanza una excepción (disco lleno, permisos), el `ROLLBACK` descarta la fila y el mes no queda bloqueado. El archivo, en cambio, puede quedar truncado, porque el modo `"w"` lo vacía al abrirlo; un export posterior lo reescribe. Con `overwrite=True` el store no puede devolver `FileExists`; si lo hiciera, `export_month` lanza `AssertionError` (es un error de programación, no una falla esperable).
 
 Un mes está bloqueado si tiene al menos una fila en `exports`, sin importar el formato ni cuántas veces se exportó. Con el mes bloqueado, `edit_session` y `delete_session` rechazan las sesiones que empiezan en él (ver [sesiones](sesiones.md#sesiones-cerradas)). Como tampoco puede haber sesiones abiertas de ese mes (es un mes cerrado y la validación lo exige), las filas del reporte quedan fijas. Entre dos exports del mismo mes solo pueden cambiar los nombres de proyectos y clientes, que se pueden renombrar, y la línea `Generado` del Markdown.
 

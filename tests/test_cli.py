@@ -52,6 +52,13 @@ class CliTest(unittest.TestCase):
         self.assertIn("trabajado 0:30", term.output)
         self.assertEqual(self.rig.tempo.list_sessions(at(11, 1, 0))[0].description, "objetivo")
 
+    def test_every_command_ensures_notifier(self) -> None:
+        # Tambien las lecturas: un proceso de aviso caido se relanza con `status`.
+        before = self.rig.supervisor.calls
+        self.run_cli("status")
+        self.run_cli("list")
+        self.assertEqual(self.rig.supervisor.calls - before, 2)
+
     def test_errors_are_messages_with_exit_1(self) -> None:
         code, term = self.run_cli("pause")
         self.assertEqual((code, term.errors), (1, ["No hay ninguna sesión activa."]))

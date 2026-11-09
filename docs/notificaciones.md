@@ -50,7 +50,7 @@ Una falla del alerter no interrumpe el loop: se escribe en stderr (`tempo notifi
 
 ## `ProcessSupervisor`
 
-`Tempo` llama a `supervisor.sync()` después de cada operación que escribe (15 en total: sesiones, edición, borrado, clientes, proyectos y exportación). Las lecturas (`status`, `list`, `report`) no lo llaman.
+`supervisor.sync()` se llama en dos momentos: al inicio de cada comando de la CLI, a través de `Tempo.ensure_notifier()`, y después de cada operación de `Tempo` que escribe (15 en total: sesiones, edición, borrado, clientes, proyectos y exportación). Lo primero relanza un proceso caído aunque el comando sea una lectura (`status`, `list`, `report`); lo segundo hace que relea la base apenas cambia. En un comando que escribe, el proceso recibe dos `SIGHUP`, lo que solo cuesta un `tick` extra.
 
 ```
 sync():
@@ -89,7 +89,7 @@ os.posix_spawn(
 
 ### Limitaciones
 
-- **El proceso solo se relanza con una escritura.** Si muere con una sesión corriendo (reinicio de WSL o de Windows, `wsl --shutdown`, `kill`), nadie lo relanza hasta el próximo comando que escriba. `status` no alcanza. Y si cuando se relanza la sesión ya venció, ese vencimiento no se avisa, porque el proceso no lo vio venir.
+- **El proceso se relanza recién con el próximo comando.** Si muere con una sesión corriendo (reinicio de WSL o de Windows, `wsl --shutdown`, `kill`), queda caído hasta que se ejecute cualquier comando de tempo. Si para entonces la sesión ya venció, ese vencimiento no se avisa, porque el proceso no lo vio venir; `status` lo muestra como vencida.
 - **Depende de Linux:** `/proc`, `flock`, `posix_spawn` con `setsid` y `setsigmask`. En otro sistema hace falta otra implementación de `Supervisor`.
 - El proceso no termina solo: queda esperando sin límite cuando no hay sesión. `uninstall.sh` lo detiene.
 

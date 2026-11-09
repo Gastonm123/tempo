@@ -24,7 +24,7 @@ El entorno objetivo es WSL2 (AlmaLinux) con Python 3.12. El supervisor del proce
 
 **Solo biblioteca estándar.** El programa se instala copiando un zipapp; no hay entorno virtual ni dependencias que mantener. `mypy` y `coverage` viven en `.venv/` y son exclusivamente de desarrollo.
 
-**La base es la única fuente de verdad.** El estado de una sesión se deriva de timestamps guardados (inicio, duración planificada, pausas). No hay un daemon que mantenga estado: el proceso de aviso solo lee la base y notifica. Si muere, no se pierde nada; se relanza en el próximo comando que escribe.
+**La base es la única fuente de verdad.** El estado de una sesión se deriva de timestamps guardados (inicio, duración planificada, pausas). No hay un daemon que mantenga estado: el proceso de aviso solo lee la base y notifica. Si muere, no se pierde nada; se relanza con el próximo comando.
 
 **Errores como valores.** Las fallas esperables del dominio se devuelven como `Err(...)` con datos concretos, nunca como excepciones. Las excepciones de la stdlib se traducen a `Err` únicamente en las piezas de borde (SQLite, archivos, procesos). Lo inesperado no se atrapa y termina el programa. Ver [arquitectura.md](arquitectura.md#errores-como-valores).
 
@@ -41,7 +41,7 @@ El entorno objetivo es WSL2 (AlmaLinux) con Python 3.12. El supervisor del proce
 ## Desarrollo y tests
 
 ```
-python3 -m unittest                                   # 72 tests, ~1.5 s
+python3 -m unittest                                   # 74 tests, ~2 s
 .venv/bin/mypy --strict tempo tests scripts
 .venv/bin/coverage run --branch --source=tempo -m unittest && .venv/bin/coverage report
 ```
