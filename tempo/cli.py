@@ -124,7 +124,7 @@ def serve_notifier(config: Config) -> int:
     # que haya llegado durante el arranque se entrega ahora al handler.
     signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGHUP})
     notifier = Notifier(SqliteStore(config.db_path), SystemClock(), build_alerter(config),
-                        config.pause_reminder, config.alarm_duration)
+                        config.pause_reminders, config.alarm_duration)
     notifier.run(wake)
     return 0
 

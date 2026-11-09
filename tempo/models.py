@@ -30,7 +30,6 @@ class Pause(Span):
     id: int
     start: datetime
     end: datetime | None  # None = pausa abierta
-    reminded: bool  # ya se mando el aviso de pausa larga (Config.pause_reminder)
 
 
 @dataclass(frozen=True, slots=True)

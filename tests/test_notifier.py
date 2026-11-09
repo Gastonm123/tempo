@@ -13,7 +13,8 @@ class NotifierTest(unittest.TestCase):
         self.alerter = RecordingAlerter()
 
     def notifier(self) -> Notifier:
-        return Notifier(self.rig.store, self.rig.clock, self.alerter, timedelta(hours=1),
+        return Notifier(self.rig.store, self.rig.clock, self.alerter,
+                        (timedelta(minutes=30), timedelta(hours=1)),
                         alarm_duration=timedelta(minutes=5))
 
     def advance(self, minutes: int) -> None:
@@ -62,18 +63,33 @@ class NotifierTest(unittest.TestCase):
         self.notifier().tick()  # el proceso arranco con la sesion ya vencida
         self.assertEqual(self.alerter.events, [])
 
-    def test_pause_reminder_once_even_after_restart(self) -> None:
+    def test_pause_reminders_at_30_and_60_minutes(self) -> None:
         ok(self.rig.tempo.start(self.project.id, HOUR, ""))
         ok(self.rig.tempo.pause())
         notifier = self.notifier()
-        self.assertEqual(notifier.tick(), HOUR)
-        self.advance(60)
-        self.assertIsNone(notifier.tick())
+        self.assertEqual(notifier.tick(), 30 * 60)
+        self.advance(30)
+        self.assertEqual(notifier.tick(), 30 * 60)
+        self.assertEqual(notifier.tick(), 30 * 60)  # no repite el de los 30
         self.assertEqual(self.alerter.events[0][:2], ("send", "Pausa larga"))
-        self.advance(120)
-        self.notifier().tick()  # un proceso nuevo no repite el aviso: quedo en la base
-        self.assertEqual(len(self.alerter.events), 1)
+        self.advance(30)
+        self.assertIsNone(notifier.tick())
+        self.assertIsNone(notifier.tick())
+        self.assertEqual(self.kinds(), ["send", "send"])
 
+    def test_pause_reminders_after_restart(self) -> None:
+        # Un proceso nuevo avisa una vez por los umbrales ya pasados y sigue con el proximo.
+        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.pause())
+        self.advance(40)
+        notifier = self.notifier()
+        self.assertEqual(notifier.tick(), 20 * 60)
+        self.advance(20)
+        notifier.tick()
+        self.assertEqual(self.kinds(), ["send", "send"])
+        self.advance(30)
+        self.assertIsNone(self.notifier().tick())
+        self.assertEqual(self.kinds(), ["send", "send", "send"])
 
 if __name__ == "__main__":
     unittest.main()

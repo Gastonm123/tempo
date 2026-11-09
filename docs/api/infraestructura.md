@@ -130,7 +130,7 @@ No es una interfaz, es un dato: `@dataclass(frozen=True, slots=True)`.
 |---|---|
 | `home` | `~/.local/tempo` (o `$TEMPO_HOME`), expandido y resuelto |
 | `notify_enabled` | `True`; `False` con `TEMPO_NO_NOTIFY=1` |
-| `pause_reminder` | 1 h |
+| `pause_reminders` | `(30 min, 1 h)` |
 | `alarm_duration` | 5 min |
 | `list_days` | 7 |
 | `report_days` | 30 |

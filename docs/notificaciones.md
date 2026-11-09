@@ -13,7 +13,7 @@ Tres piezas:
 ## `Notifier`
 
 ```python
-Notifier(store, clock, alerter, pause_reminder, alarm_duration)
+Notifier(store, clock, alerter, pause_reminders, alarm_duration)
     .tick() -> float | None        # un paso: avisa lo pendiente, devuelve segundos a esperar
     .run(wake: threading.Event)    # loop: tick, clock.wait(wake, timeout), wake.clear()
 ```
@@ -23,12 +23,11 @@ Notifier(store, clock, alerter, pause_reminder, alarm_duration)
 | Estado | Acción | Devuelve |
 |---|---|---|
 | sin sesión abierta | desarma | `None` (espera sin límite) |
-| `running` | arma `(session.id, expires_at)` | segundos hasta `expires_at` |
+| `running` | arma `(session.id, expires_at)` y olvida los avisos de pausa | segundos hasta `expires_at` |
 | `expired` y armado con ese mismo `(id, expires_at)` | desarma, hace sonar la alarma **Sesión terminada** y anota `(id, now + alarm_duration)` como alarma sonando | segundos hasta el corte de la alarma |
 | `expired` sin armar | nada | `None` |
-| `paused`, pausa abierta con `reminded = 1` | desarma | `None` |
-| `paused`, `now < inicio + pause_reminder` | desarma | segundos hasta `inicio + pause_reminder` |
-| `paused`, `now >= inicio + pause_reminder` | desarma, `mark_pause_reminded(pause.id)`, avisa **Pausa larga** | `None` |
+| `paused`, la pausa pasó más umbrales de `pause_reminders` que los ya avisados | desarma, avisa **Pausa larga** una vez y anota `(pause.id, umbrales pasados)` | segundos hasta el próximo umbral, o `None` si no quedan |
+| `paused`, sin umbrales nuevos | desarma | segundos hasta el próximo umbral, o `None` si no quedan |
 
 Antes de la tabla, si hay una alarma sonando, `tick` la corta con `alerter.silence()` cuando llegó su corte o cuando su sesión ya no está vencida: no hay sesión abierta, es otra sesión o volvió a `running`. Mientras siga sonando, `tick` devuelve el menor entre lo que indica la tabla y los segundos hasta el corte.
 
@@ -36,7 +35,7 @@ Las reglas que salen de la tabla:
 
 - **El vencimiento se avisa una vez y solo si el proceso lo vio venir.** El arming en memoria evita repetir el aviso en cada `tick` y evita avisar un vencimiento viejo cuando el proceso arranca con la sesión ya vencida. Un `extend` produce un `expires_at` nuevo, que se arma en el siguiente `tick`; un `resume` también.
 - **La alarma de vencimiento suena hasta `alarm_duration` (5 min, `Config.alarm_duration`).** `extend` y `stop` la cortan antes: escriben en la base, mandan `SIGHUP`, y el `tick` siguiente ve la sesión `running` o cerrada. El botón **Detener** del toast la cierra desde Windows; el `silence()` posterior no encuentra nada que sacar y no falla. La alarma sonando vive solo en memoria: si el proceso muere mientras suena, el corte lo hace Windows por el `ExpirationTime` del toast.
-- **La pausa larga se avisa una sola vez por pausa,** también entre reinicios del proceso: el flag `reminded` vive en la base. `pause_reminder` es 1 h (`Config.pause_reminder`).
+- **La pausa larga se avisa a los 30 min y a la hora** (`Config.pause_reminders`). Lo avisado vive en memoria, como el vencimiento armado. Un proceso que arranca con la pausa ya pasada de algún umbral manda un solo aviso por todos los pasados y sigue con el próximo: a los 40 min avisa enseguida y otra vez a la hora; pasada la hora avisa una sola vez. Repetir un aviso que quizás salió antes del reinicio es inofensivo: es un aviso común y el proceso solo se reinicia si murió.
 
 Textos:
 

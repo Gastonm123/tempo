@@ -34,7 +34,6 @@ erDiagram
         INTEGER session_id FK
         TEXT start_at
         TEXT end_at
-        INTEGER reminded
     }
     exports {
         INTEGER id PK
@@ -82,7 +81,6 @@ CREATE TABLE pauses (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     start_at   TEXT    NOT NULL,
     end_at     TEXT,
-    reminded   INTEGER NOT NULL DEFAULT 0 CHECK (reminded IN (0, 1)),
     CHECK (end_at IS NULL OR end_at >= start_at)
 );
 CREATE UNIQUE INDEX one_open_pause ON pauses(session_id) WHERE end_at IS NULL;
@@ -104,8 +102,6 @@ CREATE INDEX exports_month ON exports(month);
 **`exports.month`.** `AAAA-MM` en hora local, calculado por `Tempo.month_of`. Es la clave de bloqueo; `exported_at` es informativo.
 
 **Borrados.** Solo se borran sesiones (con sus pausas, por la cascada). Clientes y proyectos se archivan, nunca se borran, por eso sus claves foráneas no declaran acción.
-
-**`reminded`.** Lo marca el proceso de aviso al mandar el aviso de pausa larga. `replace_pauses` lo vuelve a 0, lo que solo ocurre al editar sesiones cerradas.
 
 ### Conexión y migraciones
 
@@ -215,7 +211,6 @@ Las pausas de un conjunto de sesiones se cargan con una sola consulta `WHERE ses
 | `close_pause(session_id, end_at)` | Cierra la pausa abierta, si existe |
 | `add_closed_pause(session_id, start_at, end_at)` | Usado por `extend` para el hueco posterior al vencimiento |
 | `replace_pauses(session_id, pauses: Sequence[Span])` | Borra y reinserta; usado por `edit` |
-| `mark_pause_reminded(pause_id)` | |
 | `add_export(month, exported_at)` | |
 | `is_month_locked(month) -> bool` | Existe alguna fila en `exports` para ese mes |
 
@@ -226,7 +221,7 @@ Dataclasses inmutables (`frozen=True, slots=True`) en `models.py`:
 ```python
 Client(id, name, archived)
 Project(id, name, client_id, client_name, description, archived)
-Pause(id, start, end, reminded)                      # implementa Span
+Pause(id, start, end)                                # implementa Span
 Session(id, project_id, project_name, client_name, description,
         start_at, duration_s, end_at, pauses: tuple[Pause, ...])   # .is_open
 ```

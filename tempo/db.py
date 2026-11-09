@@ -67,7 +67,6 @@ CREATE TABLE pauses (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     start_at   TEXT    NOT NULL,
     end_at     TEXT,
-    reminded   INTEGER NOT NULL DEFAULT 0 CHECK (reminded IN (0, 1)),
     CHECK (end_at IS NULL OR end_at >= start_at)
 );
 
@@ -149,7 +148,6 @@ class Store(Protocol):
     def close_pause(self, session_id: int, end_at: datetime) -> None: ...
     def add_closed_pause(self, session_id: int, start_at: datetime, end_at: datetime) -> None: ...
     def replace_pauses(self, session_id: int, pauses: Sequence[Span]) -> None: ...
-    def mark_pause_reminded(self, pause_id: int) -> None: ...
 
     # Reportes guardados
     def add_export(self, month: str, exported_at: datetime) -> None: ...
@@ -337,7 +335,6 @@ class SqliteStore(Store):
                     id=pause["id"],
                     start=from_db(pause["start_at"]),
                     end=None if pause["end_at"] is None else from_db(pause["end_at"]),
-                    reminded=bool(pause["reminded"]),
                 )
             )
         return [
@@ -464,9 +461,6 @@ class SqliteStore(Store):
                     None if pause.end is None else to_db(pause.end),
                 ),
             )
-
-    def mark_pause_reminded(self, pause_id: int) -> None:
-        self._conn.execute("UPDATE pauses SET reminded = 1 WHERE id = ?", (pause_id,))
 
     # --- Reportes guardados -------------------------------------------------
 

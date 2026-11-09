@@ -10,14 +10,16 @@ Reglas:
   de vencer. Si arranca con la sesion ya vencida, no avisa algo viejo.
 - El vencimiento suena como alarma hasta `alarm_duration`. Se corta antes si
   la sesion deja de estar vencida (extend, stop, borrado).
-- Una pausa que llega a `pause_reminder` se avisa una sola vez (queda marcada
-  en la base).
+- Una pausa se avisa al llegar a cada umbral de `pause_reminders`. Lo avisado
+  vive en memoria: un proceso que arranca con la pausa ya pasada de uno o mas
+  umbrales manda un solo aviso por todos y sigue con el proximo.
 """
 
 from __future__ import annotations
 
 import sys
 import threading
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from tempo import sessions as calc
@@ -31,18 +33,20 @@ from tempo.result import AlertFailed, Err, Ok, Result
 
 class Notifier:
     def __init__(
-        self, store: Store, clock: Clock, alerter: Alerter, pause_reminder: timedelta,
-        alarm_duration: timedelta,
+        self, store: Store, clock: Clock, alerter: Alerter,
+        pause_reminders: Sequence[timedelta], alarm_duration: timedelta,
     ) -> None:
         self._store = store
         self._clock = clock
         self._alerter = alerter
-        self._pause_reminder = pause_reminder
+        self._pause_reminders = sorted(pause_reminders)
         self._alarm_duration = alarm_duration
         # Vencimiento que vimos venir: (sesion, momento). Solo ese se avisa.
         self._armed: tuple[int, datetime] | None = None
         # Alarma sonando: (sesion, momento en que se corta).
         self._ringing: tuple[int, datetime] | None = None
+        # Pausa abierta y cuantos umbrales de pause_reminders ya se avisaron.
+        self._pause_alerts: tuple[int, int] | None = None
 
     def _seconds_until(self, moment: datetime) -> float:
         return max((moment - self._clock.now()).total_seconds(), 0.0)
@@ -61,6 +65,7 @@ class Notifier:
         now = self._clock.now()
         if session is None:
             self._armed = None
+            self._pause_alerts = None
             self._stop_ringing_unless(None, now)
             return None
         state = calc.session_state(session.start_at, session.duration_s, session.pauses, now)
@@ -87,6 +92,7 @@ class Notifier:
             case "running":
                 assert state.expires_at is not None
                 self._armed = (session.id, state.expires_at)
+                self._pause_alerts = None
                 return self._seconds_until(state.expires_at)
             case "expired":
                 if self._armed == (session.id, state.expires_at):
@@ -102,17 +108,18 @@ class Notifier:
             case "paused":
                 self._armed = None
                 pause = next(p for p in session.pauses if p.end is None)
-                if pause.reminded:
+                sent = self._pause_alerts[1] if (
+                    self._pause_alerts is not None and self._pause_alerts[0] == pause.id) else 0
+                passed = sum(1 for after in self._pause_reminders if pause.start + after <= now)
+                if passed > sent:
+                    self._log_failure(self._alerter.send(
+                        "Pausa larga",
+                        f"La sesión de {session.project_name} lleva"
+                        f" {format_hm(int((now - pause.start).total_seconds()))} pausada."))
+                self._pause_alerts = (pause.id, passed)
+                if passed == len(self._pause_reminders):
                     return None
-                due = pause.start + self._pause_reminder
-                if now < due:
-                    return self._seconds_until(due)
-                self._store.mark_pause_reminded(pause.id)
-                self._log_failure(self._alerter.send(
-                    "Pausa larga",
-                    f"La sesión de {session.project_name} lleva"
-                    f" {format_hm(int((now - pause.start).total_seconds()))} pausada."))
-                return None
+                return self._seconds_until(pause.start + self._pause_reminders[passed])
 
     def run(self, wake: threading.Event) -> None:
         while True:

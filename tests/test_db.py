@@ -47,8 +47,8 @@ class RoundTripTest(unittest.TestCase):
         self.assertEqual(loaded.start_at, start)
         [pause] = loaded.pauses
         self.assertEqual(
-            (pause.start, pause.end, pause.reminded),
-            (start + timedelta(minutes=5), start + timedelta(minutes=10), False),
+            (pause.start, pause.end),
+            (start + timedelta(minutes=5), start + timedelta(minutes=10)),
         )
         self.assertIsInstance(pause.id, int)
 

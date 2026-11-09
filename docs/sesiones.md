@@ -135,7 +135,7 @@ En una transacción reemplaza proyecto, descripción, inicio y fin, y reescribe 
 pausa' = [max(inicio_p, start_at), min(fin_p, end_at)]   para toda pausa con fin_p > start_at y inicio_p < end_at
 ```
 
-Las que quedan afuera se descartan, y las reescritas pierden el flag `reminded` (irrelevante en una sesión cerrada). `duration_s` no cambia: es la duración planificada.
+Las que quedan afuera se descartan. `duration_s` no cambia: es la duración planificada.
 
 La CLI verifica el bloqueo del mes antes de preguntar, pide cada campo con el valor actual como default (fechas `AAAA-MM-DD HH:MM`, hora local) y resuelve el proyecto por nombre. Si otro proceso modifica la sesión mientras la persona responde, la edición lo pisa: es un [riesgo aceptado](api/persistencia.md#riesgo-aceptado-edición-concurrente).
 

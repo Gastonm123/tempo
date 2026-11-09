@@ -14,7 +14,7 @@ DEFAULT_HOME = "~/.local/tempo"
 class Config:
     home: Path
     notify_enabled: bool = True
-    pause_reminder: timedelta = timedelta(hours=1)
+    pause_reminders: tuple[timedelta, ...] = (timedelta(minutes=30), timedelta(hours=1))
     alarm_duration: timedelta = timedelta(minutes=5)
     list_days: int = 7
     report_days: int = 30

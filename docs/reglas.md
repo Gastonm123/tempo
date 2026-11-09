@@ -55,7 +55,7 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 | Un solo proceso de aviso a la vez | `ProcessSupervisor`: `flock` + identidad `(PID, inicio)` de `/proc/<pid>/stat` |
 | El vencimiento se avisa una vez, y solo si el proceso lo vio venir | `Notifier` (estado armado en memoria) |
 | La alarma de vencimiento suena hasta 5 min y la cortan antes `extend` y `stop` | `Notifier` (alarma sonando en memoria) + `ExpirationTime` del toast |
-| La pausa larga (1 h) se avisa una vez por pausa, también entre reinicios | `Notifier` + `pauses.reminded` |
+| La pausa larga se avisa a los 30 min y a la hora; un proceso que arranca tarde avisa una vez por los umbrales ya pasados | `Notifier` (avisos de pausa en memoria) |
 | `TEMPO_NO_NOTIFY=1` desactiva las notificaciones | `build_alerter` |
 
 ## Opciones de la CLI
