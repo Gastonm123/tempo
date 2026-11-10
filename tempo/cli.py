@@ -541,15 +541,45 @@ def cmd_project_list(app: Deps, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_project_rename(app: Deps, args: argparse.Namespace) -> int:
-    def action(project: Project) -> int:
-        match app.tempo.rename_project(project.id, args.new_name):
-            case Err(error):
-                return fail(app.terminal, error)
-            case Ok():
-                app.terminal.write(f"Proyecto renombrado a {args.new_name.strip()!r}.")
-                return 0
-    return with_project(app, args.name, action)
+def select_project(app: Deps, name: str | None) -> Result[Project, DomainError] | None:
+    """Proyecto a editar: por nombre (incluye archivados) o elegido de la lista de
+    activos. None = no hay activos para elegir."""
+    if name is not None:
+        return app.tempo.find_project(name)
+    projects = app.tempo.list_projects()
+    if not projects:
+        return None
+    match app.terminal.choose("Proyecto", [p.name for p in projects], title="Proyectos",
+                              allow_typed=False):
+        case Picked(index):
+            return Ok(projects[index])
+        case Typed():
+            raise AssertionError("allow_typed=False no devuelve Typed")
+
+
+def cmd_project_edit(app: Deps, args: argparse.Namespace) -> int:
+    term = app.terminal
+    match select_project(app, args.name):
+        case None:
+            term.error("No hay proyectos activos.")
+            return 1
+        case Err(error):
+            return fail(term, error)
+        case Ok(project):
+            pass
+    locked = app.tempo.project_locked_month(project.id)
+    if locked is not None:
+        return fail(term, MonthLocked(locked))
+    term.write("Enter conserva el valor actual.")
+    term.write(f"Cliente: {project.client_name or '(sin cliente)'} (no se puede cambiar)")
+    name = term.text("Nombre", default=project.name)
+    description = term.text("Descripción del proyecto", default=project.description)
+    match app.tempo.edit_project(project.id, name=name, description=description):
+        case Err(error):
+            return fail(term, error)
+        case Ok():
+            term.write(f"Proyecto {name.strip()!r} actualizado.")
+            return 0
 
 
 def cmd_project_archive(app: Deps, args: argparse.Namespace) -> int:
@@ -605,15 +635,43 @@ def cmd_client_list(app: Deps, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_client_rename(app: Deps, args: argparse.Namespace) -> int:
-    def action(client: Client) -> int:
-        match app.tempo.rename_client(client.id, args.new_name):
-            case Err(error):
-                return fail(app.terminal, error)
-            case Ok():
-                app.terminal.write(f"Cliente renombrado a {args.new_name.strip()!r}.")
-                return 0
-    return with_client(app, args.name, action)
+def select_client(app: Deps, name: str | None) -> Result[Client, DomainError] | None:
+    """Cliente a editar: por nombre (incluye archivados) o elegido de la lista de
+    activos. None = no hay activos para elegir."""
+    if name is not None:
+        return app.tempo.find_client(name)
+    clients = app.tempo.list_clients()
+    if not clients:
+        return None
+    match app.terminal.choose("Cliente", [c.name for c in clients], title="Clientes",
+                              allow_typed=False):
+        case Picked(index):
+            return Ok(clients[index])
+        case Typed():
+            raise AssertionError("allow_typed=False no devuelve Typed")
+
+
+def cmd_client_edit(app: Deps, args: argparse.Namespace) -> int:
+    term = app.terminal
+    match select_client(app, args.name):
+        case None:
+            term.error("No hay clientes activos.")
+            return 1
+        case Err(error):
+            return fail(term, error)
+        case Ok(client):
+            pass
+    locked = app.tempo.client_locked_month(client.id)
+    if locked is not None:
+        return fail(term, MonthLocked(locked))
+    term.write("Enter conserva el valor actual.")
+    name = term.text("Nombre", default=client.name)
+    match app.tempo.edit_client(client.id, name):
+        case Err(error):
+            return fail(term, error)
+        case Ok():
+            term.write(f"Cliente {name.strip()!r} actualizado.")
+            return 0
 
 
 def cmd_client_archive(app: Deps, args: argparse.Namespace) -> int:
@@ -751,9 +809,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("add", cmd_project_add, "crear un proyecto", project_cmds).add_argument("name")
     add("list", cmd_project_list, "listar proyectos", project_cmds).add_argument(
         "--archived", action="store_true", help="incluir archivados")
-    rename = add("rename", cmd_project_rename, "renombrar un proyecto", project_cmds)
-    rename.add_argument("name")
-    rename.add_argument("new_name")
+    add("edit", cmd_project_edit, "editar nombre y descripción de un proyecto",
+        project_cmds).add_argument("name", nargs="?")
     add("archive", cmd_project_archive, "archivar un proyecto", project_cmds).add_argument("name")
     add("unarchive", cmd_project_unarchive, "reactivar un proyecto",
         project_cmds).add_argument("name")
@@ -763,9 +820,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("add", cmd_client_add, "crear un cliente", client_cmds).add_argument("name")
     add("list", cmd_client_list, "listar clientes", client_cmds).add_argument(
         "--archived", action="store_true", help="incluir archivados")
-    rename = add("rename", cmd_client_rename, "renombrar un cliente", client_cmds)
-    rename.add_argument("name")
-    rename.add_argument("new_name")
+    add("edit", cmd_client_edit, "editar el nombre de un cliente",
+        client_cmds).add_argument("name", nargs="?")
     add("archive", cmd_client_archive, "archivar un cliente y sus proyectos",
         client_cmds).add_argument("name")
     add("unarchive", cmd_client_unarchive, "reactivar un cliente", client_cmds).add_argument("name")

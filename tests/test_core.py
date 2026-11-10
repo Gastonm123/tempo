@@ -228,12 +228,22 @@ class ClientsProjectsTest(unittest.TestCase):
             self.tempo.add_project("nuevo", self.acme.id, ""), Err(ClientArchived("Acme"))
         )
 
-    def test_rename_keeps_sessions(self) -> None:
+    def test_edit_keeps_sessions(self) -> None:
         ok(self.tempo.start(self.tienda.id, HOUR, ""))
-        ok(self.tempo.rename_project(self.tienda.id, "tienda-online"))
-        ok(self.tempo.rename_client(self.acme.id, "Acme SRL"))
+        ok(self.tempo.edit_project(self.tienda.id, name="tienda-online", description=" Shop "))
+        ok(self.tempo.edit_client(self.acme.id, "Acme SRL"))
         session = ok(self.tempo.status()).session
         self.assertEqual((session.project_name, session.client_name), ("tienda-online", "Acme SRL"))
+        self.assertEqual(ok(self.tempo.find_project("tienda-online")).description, "Shop")
+
+    def test_exported_month_blocks_edit(self) -> None:
+        ok(self.tempo.start(self.tienda.id, HOUR, ""))
+        ok(self.tempo.stop(None))
+        self.rig.store.add_export("2026-11", at(11, 9, 12))
+        locked = Err(MonthLocked("2026-11"))
+        self.assertEqual(self.tempo.edit_project(self.tienda.id, name="x", description=""), locked)
+        self.assertEqual(self.tempo.edit_client(self.acme.id, "x"), locked)
+        ok(self.tempo.edit_project(self.blog.id, name="blog-2", description=""))  # sin sesiones
 
     def test_find_projects(self) -> None:
         found = ok(self.tempo.find_projects(["tienda", "blog"]))

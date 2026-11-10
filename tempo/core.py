@@ -383,12 +383,25 @@ class Tempo:
     def list_clients(self, *, include_archived: bool = False) -> list[Client]:
         return self._store.list_clients(include_archived=include_archived)
 
+    def client_locked_month(self, client_id: int) -> str | None:
+        """Primer mes exportado con sesiones de algun proyecto del cliente, incluidos
+        los archivados. None = el cliente se puede editar."""
+        projects = self._store.list_projects(include_archived=True, client_id=client_id)
+        if not projects:
+            return None
+        return self._locked_month([p.id for p in projects])
+
     @atomic_write
-    def rename_client(
+    def edit_client(
         self, client_id: int, name: str
-    ) -> Result[None, ClientNotFound | InvalidName | NameTaken]:
+    ) -> Result[None, ClientNotFound | MonthLocked | InvalidName | NameTaken]:
+        """Cambia el nombre. No procede si algun proyecto del cliente tiene sesiones en
+        un mes exportado: el reporte guardado dejaria de coincidir con la base."""
         if self._store.get_client(client_id) is None:
             return Err(ClientNotFound(str(client_id)))
+        locked = self.client_locked_month(client_id)
+        if locked is not None:
+            return Err(MonthLocked(locked))
         match clean_name(name):
             case Err() as invalid:
                 return invalid
@@ -462,19 +475,38 @@ class Tempo:
     def list_projects(self, *, include_archived: bool = False) -> list[Project]:
         return self._store.list_projects(include_archived=include_archived)
 
+    def _locked_month(self, project_ids: Sequence[int]) -> str | None:
+        """Primer mes exportado con sesiones de esos proyectos. Los meses son en hora
+        local, por eso se recorren los limites de cada uno en vez de filtrar en SQL."""
+        for month in self._store.exported_months():
+            start, end = month_bounds(month, self._tz)
+            if self._store.sessions_between(start, end, project_ids, limit=1):
+                return month
+        return None
+
+    def project_locked_month(self, project_id: int) -> str | None:
+        """Primer mes exportado con sesiones del proyecto. None = se puede editar."""
+        return self._locked_month([project_id])
+
     @atomic_write
-    def rename_project(
-        self, project_id: int, name: str
-    ) -> Result[None, ProjectNotFound | InvalidName | NameTaken]:
+    def edit_project(
+        self, project_id: int, *, name: str, description: str
+    ) -> Result[None, ProjectNotFound | MonthLocked | InvalidName | NameTaken]:
+        """Cambia nombre y descripcion; el cliente no cambia nunca. No procede si el
+        proyecto tiene sesiones en un mes exportado."""
         if self._store.get_project(project_id) is None:
             return Err(ProjectNotFound(str(project_id)))
+        locked = self.project_locked_month(project_id)
+        if locked is not None:
+            return Err(MonthLocked(locked))
         match clean_name(name):
             case Err() as invalid:
                 return invalid
             case Ok(clean):
                 pass
-        renamed = self._store.rename_project(project_id, clean)
-        return renamed
+        updated = self._store.update_project(project_id, name=clean,
+                                             description=description.strip())
+        return updated
 
     @atomic_write
     def archive_project(self, project_id: int) -> Result[None, ProjectNotFound]:

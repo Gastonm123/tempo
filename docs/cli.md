@@ -90,18 +90,34 @@ Muestra la sesión y pide confirmación. Rechaza sesiones de meses exportados.
 ```
 tempo project add <nombre>                # pregunta cliente y descripción
 tempo project list [--archived]
-tempo project rename <nombre> <nuevo>
+tempo project edit [nombre]               # pregunta nombre y descripción
 tempo project archive <nombre>
 tempo project unarchive <nombre>          # pregunta si reactivar el cliente, si está archivado
 
 tempo client add <nombre>
 tempo client list [--archived]
-tempo client rename <nombre> <nuevo>
+tempo client edit [nombre]                # pregunta nombre
 tempo client archive <nombre>             # si tiene proyectos activos, los lista y pide confirmación
 tempo client unarchive <nombre>           # no reactiva los proyectos
 ```
 
-Los nombres con espacios van entre comillas: `tempo project rename web "web tienda"`.
+Los nombres con espacios van entre comillas: `tempo project edit "web tienda"`.
+
+### `tempo project edit [nombre]` · `tempo client edit [nombre]`
+
+Con nombre, edita ese proyecto o cliente, aunque esté archivado. Sin nombre, muestra la lista de activos (`Proyectos:` o `Clientes:`) para elegir por número. Cada pregunta lleva el valor actual como default.
+
+El cliente de un proyecto no se puede cambiar: `project edit` lo muestra como dato.
+
+```
+Enter conserva el valor actual.
+Cliente: Acme SRL (no se puede cambiar)
+Nombre [web]: web-tienda
+Descripción del proyecto [Tienda online]:
+Proyecto 'web-tienda' actualizado.
+```
+
+Fallan antes de preguntar si el proyecto, o algún proyecto del cliente (incluidos los archivados), tiene sesiones en un mes exportado. Como Enter conserva el default, una descripción no se puede dejar vacía.
 
 ## Reportes
 

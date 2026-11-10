@@ -75,7 +75,8 @@ class ActiveStatus:
 | `add_client(name)` | `Client` | `InvalidName`, `NameTaken` |
 | `find_client(name)` | `Client` (incluye archivados) | `ClientNotFound` |
 | `list_clients(*, include_archived=False)` | `list[Client]` | — |
-| `rename_client(id, name)` | `None` | `ClientNotFound`, `InvalidName`, `NameTaken` |
+| `client_locked_month(id)` | `str \| None`: primer mes exportado con sesiones de algún proyecto del cliente, incluidos los archivados | — |
+| `edit_client(id, name)` | `None` | `ClientNotFound`, `MonthLocked`, `InvalidName`, `NameTaken` |
 | `client_projects(id)` | `list[Project]` activos | — |
 | `archive_client(id, *, cascade)` | `tuple[Project, ...]` archivados en cascada | `ClientNotFound`, `ClientHasActiveProjects` |
 | `unarchive_client(id)` | `None` | `ClientNotFound` |
@@ -88,7 +89,8 @@ class ActiveStatus:
 | `find_project(name)` | `Project` (incluye archivados) | `ProjectNotFound` |
 | `find_projects(names)` | `list[Project]` en el orden pedido | `ProjectNotFound` del primero que falte |
 | `list_projects(*, include_archived=False)` | `list[Project]` | — |
-| `rename_project(id, name)` | `None` | `ProjectNotFound`, `InvalidName`, `NameTaken` |
+| `project_locked_month(id)` | `str \| None`: primer mes exportado con sesiones del proyecto | — |
+| `edit_project(id, *, name, description)` | `None` | `ProjectNotFound`, `MonthLocked`, `InvalidName`, `NameTaken` |
 | `archive_project(id)` | `None` | `ProjectNotFound` |
 | `unarchive_project(id, *, with_client)` | `None` | `ProjectNotFound`, `ClientArchived` |
 

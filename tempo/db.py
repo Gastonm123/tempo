@@ -113,7 +113,9 @@ class Store(Protocol):
     def list_projects(
         self, *, include_archived: bool, client_id: int | None = None
     ) -> list[Project]: ...
-    def rename_project(self, project_id: int, name: str) -> Result[None, NameTaken]: ...
+    def update_project(
+        self, project_id: int, *, name: str, description: str
+    ) -> Result[None, NameTaken]: ...
     def set_project_archived(self, project_id: int, archived: bool) -> None: ...
 
     # Sesiones
@@ -152,6 +154,9 @@ class Store(Protocol):
     # Reportes guardados
     def add_export(self, month: str, exported_at: datetime) -> None: ...
     def is_month_locked(self, month: str) -> bool: ...
+    def exported_months(self) -> list[str]:
+        """Meses con al menos un reporte guardado, ordenados."""
+        ...
 
 
 class SqliteStore(Store):
@@ -298,9 +303,14 @@ class SqliteStore(Store):
             sql += " WHERE " + " AND ".join(conditions)
         return [self._project(row) for row in self._conn.execute(sql + " ORDER BY p.name", params)]
 
-    def rename_project(self, project_id: int, name: str) -> Result[None, NameTaken]:
+    def update_project(
+        self, project_id: int, *, name: str, description: str
+    ) -> Result[None, NameTaken]:
         try:
-            self._conn.execute("UPDATE projects SET name = ? WHERE id = ?", (name, project_id))
+            self._conn.execute(
+                "UPDATE projects SET name = ?, description = ? WHERE id = ?",
+                (name, description, project_id),
+            )
         except sqlite3.IntegrityError as error:
             if "projects.name" in str(error):
                 return Err(NameTaken(name))
@@ -472,3 +482,7 @@ class SqliteStore(Store):
     def is_month_locked(self, month: str) -> bool:
         row = self._conn.execute("SELECT 1 FROM exports WHERE month = ? LIMIT 1", (month,))
         return row.fetchone() is not None
+
+    def exported_months(self) -> list[str]:
+        rows = self._conn.execute("SELECT DISTINCT month FROM exports ORDER BY month")
+        return [row["month"] for row in rows]

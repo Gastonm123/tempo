@@ -188,7 +188,7 @@ Los métodos de escritura no abren transacciones propias: las agrupa quien llama
 | `add_project(name, client_id, description) -> Result[Project, NameTaken]` | |
 | `get_project(id)`, `find_project(name) -> Project \| None` | `client_name` viene de un `LEFT JOIN` |
 | `list_projects(*, include_archived, client_id=None) -> list[Project]` | Filtro opcional por cliente; ordenados por nombre |
-| `rename_project(id, name) -> Result[None, NameTaken]` | |
+| `update_project(id, *, name, description) -> Result[None, NameTaken]` | El cliente no se toca |
 | `set_project_archived(id, archived)` | |
 
 ### Sesiones
@@ -213,6 +213,7 @@ Las pausas de un conjunto de sesiones se cargan con una sola consulta `WHERE ses
 | `replace_pauses(session_id, pauses: Sequence[Span])` | Borra y reinserta; usado por `edit` |
 | `add_export(month, exported_at)` | |
 | `is_month_locked(month) -> bool` | Existe alguna fila en `exports` para ese mes |
+| `exported_months() -> list[str]` | Meses distintos de `exports`, ordenados |
 
 ## Modelos
 

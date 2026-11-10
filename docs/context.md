@@ -20,6 +20,6 @@ El entorno objetivo es WSL2 (AlmaLinux) con Python 3.12. El supervisor del proce
 
 **Sesiones enteras.** Una sesión nunca se parte. Pertenece al mes (hora local) en que empezó, aunque termine al día o al mes siguiente. El costo es que la hora entre 00:00 y la 01:00 de una sesión que arrancó el 30/09 a las 22:00 cuenta en septiembre; partirla obligaría a mostrar separadores por día para que la salida tenga sentido.
 
-**Meses exportados inmutables.** Exportar un mes lo bloquea para edición y borrado, de modo que un reporte guardado siempre coincide con la base y regenerarlo produce el mismo contenido. No existe un comando para desbloquear.
+**Meses exportados inmutables.** Exportar un mes bloquea la edición y el borrado de sus sesiones, y la edición de los proyectos y clientes que tienen sesiones en él, de modo que un reporte guardado siempre coincide con la base y regenerarlo produce el mismo contenido. No existe un comando para desbloquear.
 
 **Comentarios y docstrings en ASCII.** Los textos para el usuario mantienen su ortografía; el código no.

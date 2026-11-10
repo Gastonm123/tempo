@@ -32,7 +32,8 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 | Archivar un cliente con proyectos activos requiere `cascade=True` | `Tempo.archive_client` | `ClientHasActiveProjects` |
 | Desarchivar un proyecto de un cliente archivado requiere `with_client=True` | `Tempo.unarchive_project` | `ClientArchived` |
 | Desarchivar un cliente no reactiva sus proyectos | `Tempo.unarchive_client` | — |
-| Renombrar está permitido aunque haya meses exportados | — | — |
+| No se edita un proyecto con sesiones en un mes exportado | `Tempo.edit_project` | `MonthLocked` |
+| No se edita un cliente si alguno de sus proyectos (activos o archivados) tiene sesiones en un mes exportado | `Tempo.edit_client` | `MonthLocked` |
 
 ## Meses exportados
 

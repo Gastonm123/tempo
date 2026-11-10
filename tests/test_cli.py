@@ -75,6 +75,28 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self.rig.tempo.list_projects(), [])
 
+    def test_project_edit_from_menu_keeps_client(self) -> None:
+        acme = ok(self.rig.tempo.add_client("Acme"))
+        ok(self.rig.tempo.add_project("app", None, ""))
+        ok(self.rig.tempo.add_project("web", acme.id, "vieja"))
+        code, term = self.run_cli("project", "edit", answers=("2", "", "Tienda online"))
+        self.assertEqual(code, 0)
+        self.assertEqual(term.lines[:3], ["Proyectos:", "  1) app", "  2) web"])
+        self.assertIn("Cliente: Acme (no se puede cambiar)", term.output)
+        project = ok(self.rig.tempo.find_project("web"))
+        self.assertEqual((project.client_name, project.description), ("Acme", "Tienda online"))
+
+    def test_client_edit_blocked_by_exported_month(self) -> None:
+        acme = ok(self.rig.tempo.add_client("Acme"))
+        project = ok(self.rig.tempo.add_project("web", acme.id, ""))
+        ok(self.rig.tempo.start(project.id, HOUR, ""))
+        ok(self.rig.tempo.stop(None))
+        self.rig.store.add_export("2026-11", at(11, 9, 12))
+        code, term = self.run_cli("client", "edit", "Acme")  # falla sin preguntar nada
+        self.assertEqual(code, 1)
+        self.assertEqual(term.errors,
+                         ["El mes 2026-11 tiene un reporte guardado y no se puede modificar."])
+
     def test_edit_with_defaults_and_locked_month(self) -> None:
         project = ok(self.rig.tempo.add_project("web", None, ""))
         ok(self.rig.tempo.start(project.id, HOUR, "x"))

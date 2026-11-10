@@ -45,7 +45,7 @@ Los datos viven en `~/.local/tempo/` (base SQLite, reportes guardados y archivos
 | `tempo edit ID` / `delete ID` | Corrige o borra una sesión cerrada |
 | `tempo report` | Horas de los últimos 30 días, agrupadas por mes |
 | `tempo report --month 10 --csv` | Exporta un mes cerrado |
-| `tempo project …` / `client …` | `add`, `list`, `rename`, `archive`, `unarchive` |
+| `tempo project …` / `client …` | `add`, `list`, `edit`, `archive`, `unarchive` |
 
 La referencia completa está en [docs/cli.md](docs/cli.md).
 

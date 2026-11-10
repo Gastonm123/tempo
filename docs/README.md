@@ -16,7 +16,7 @@
 ## Desarrollo y tests
 
 ```
-python3 -m unittest                                   # 74 tests, ~2 s
+python3 -m unittest                                   # 79 tests, ~2 s
 .venv/bin/mypy --strict tempo tests scripts
 .venv/bin/coverage run --branch --source=tempo -m unittest && .venv/bin/coverage report
 ```
