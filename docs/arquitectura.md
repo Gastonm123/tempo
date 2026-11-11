@@ -23,7 +23,7 @@ flowchart TD
 | Presentación | `cli.py`, `terminal.py`, `__main__.py` | Argumentos, preguntas interactivas, mensajes y códigos de salida |
 | Dominio | `core.py`, `models.py`, `result.py` | Reglas de negocio expuestas como la API `Tempo` |
 | Cálculo puro | `sessions.py`, `durations.py`, `report.py` | Tiempo trabajado, vencimiento, armado y formato de reportes |
-| Infraestructura | `db.py`, `store_files.py`, `clock.py`, `supervisor.py`, `alerts.py`, `notifier.py`, `config.py` | SQLite, archivos, reloj, procesos, notificaciones |
+| Infraestructura | `db.py`, `store_files.py`, `clock.py`, `supervisor.py`, `alerts.py`, `notifier.py`, `notifier_main.py`, `config.py` | SQLite, archivos, reloj, procesos, notificaciones |
 
 Las dependencias van hacia abajo. `Tempo` no conoce `Terminal`: nunca pregunta ni imprime. Las decisiones del usuario llegan como parámetros obligatorios (`archive_client(id, *, cascade)`, `unarchive_project(id, *, with_client)`), y es la CLI la que consulta, pregunta y después llama con la decisión tomada.
 
@@ -43,7 +43,7 @@ Tempo(
 )
 ```
 
-Los tests pasan un `Deps` con `DummyTerminal` y un `Tempo` construido sobre fakes. El subcomando interno `tempo notifier` no pasa por `Deps`: arma su propio `Notifier` en `serve_notifier`.
+Los tests pasan un `Deps` con `DummyTerminal` y un `Tempo` construido sobre fakes. El proceso de aviso no pasa por la CLI: tiene su propio punto de entrada, `python -m tempo.notifier_main`, que arma su `Notifier` en `serve_notifier`.
 
 Cada pieza recibe solo el valor que necesita (`SqliteStore` recibe una ruta, no el `Config`).
 
@@ -94,6 +94,8 @@ Reglas:
 - Una excepción que no corresponde a una falla esperable se vuelve a lanzar.
 - `Tempo` valida todo antes de escribir, de modo que una operación nunca deja escrituras a medias que haya que deshacer. La validación corre dentro de la misma transacción que la escritura (`@atomic_write`), así que no puede quedar desactualizada por otro proceso.
 - No hay resultados parciales: una falla siempre es un `Err` con el motivo.
+- La CLI valida la entrada del usuario antes de llamar a `Tempo`: una fecha mal escrita, un nombre vacío o repetido o un "trabajo realizado" vacío se rechazan al ingresarlos, y la pregunta se repite con el motivo (o el comando falla antes de preguntar, si el dato vino como argumento). Llegar a `Tempo` con datos que la CLI podía validar y devolver ese error esperable al final no es aceptable: el usuario pierde lo que ya respondió.
+- Lo que depende del estado, y no de lo que se escribió, se delega a `Tempo`: pausar una sesión ya pausada, archivar algo archivado, editar un mes exportado. La CLI no tiene ese contexto de forma confiable (otro proceso puede cambiarlo) y muestra el `Err` que devuelve `Tempo`. `Tempo` igual valida todo, así que las validaciones de la CLI son para la interacción, no para la integridad de los datos.
 - Las únicas excepciones atrapadas fuera del borde son `KeyboardInterrupt` y `EOFError` en `cli.entry()`, que muestran "Cancelado." y salen con 130.
 
 En una función con varios `match` sobre resultados distintos hay que declarar `error: DomainError` al inicio: `mypy` fija el tipo de una variable de captura en el primer `case Err(error)` y rechaza los siguientes.

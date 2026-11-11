@@ -34,9 +34,9 @@ class Terminal(Protocol):
     def write(self, text: str) -> None: ...
     def error(self, text: str) -> None: ...
     def width(self) -> int: ...
-    def text(self, prompt: str, default: str = "") -> str: ...
+    def text(self, prompt: str, default: str = "", validate: Validator | None = None) -> str: ...
     def choose(self, prompt: str, options: Sequence[str], *, title: str,
-               allow_typed: bool) -> Choice: ...
+               names: Sequence[str] = ()) -> Choice: ...
     def confirm(self, prompt: str) -> bool: ...
     def duration(self, prompt: str) -> int: ...
 ```
@@ -46,16 +46,18 @@ class Terminal(Protocol):
 | `write` | Una línea a la salida |
 | `error` | Un mensaje de error |
 | `width` | Ancho disponible en caracteres |
-| `text` | Respuesta sin espacios en los extremos; vacía → `default` |
-| `choose` | Muestra `title:` y debajo las opciones numeradas. `Picked(index)` o, con `allow_typed`, `Typed(text)`. Repite hasta obtener una respuesta válida |
+| `text` | Respuesta sin espacios en los extremos; vacía → `default`, que no se muestra. Con `validate`, muestra el motivo y repite mientras la respuesta no sirva |
+| `choose` | Muestra `title:` y debajo las opciones numeradas. `Picked(index)` para una opción, `Typed(text)` para uno de `names` que no está en la lista. Repite hasta obtener una respuesta válida |
 | `confirm` | `True`/`False`. Vacío es "no". Repite ante respuestas inválidas |
 | `duration` | Segundos. Repite hasta que `durations.parse` devuelva `Ok` |
 
-La interpretación de respuestas es pura y compartida (`read_choice`, `read_yes_no`), sin herencia entre implementaciones. `read_choice` acepta un número de 1 a `len(options)` o el texto exacto de una opción; con `allow_typed`, cualquier otro texto no vacío y no numérico es `Typed`.
+`Validator = Callable[[str], str | None]` devuelve el motivo por el que una respuesta no sirve, o `None`. La CLI arma los validadores a partir de fallas del dominio (`cli.as_validator`), así el motivo es el mismo texto de `cli.message()`.
+
+La interpretación de respuestas es pura y compartida (`read_choice`, `read_yes_no`), sin herencia entre implementaciones. `read_choice` acepta un número de 1 a `len(options)` o el texto exacto de una opción (`Picked`), o uno de `names` (`Typed`); cualquier otra cosa es inválida. Los avisos de reintento (`Opcion invalida.`, `Responde s o n.`, `Duracion invalida.`) son constantes del módulo, compartidas por las dos implementaciones.
 
 `PosixTerminal` usa `input()`/`print()`, manda `error` a stderr con el prefijo `Error: ` y toma `width` de `shutil.get_terminal_size()`. Un `EOFError` o `KeyboardInterrupt` en `input()` se propaga hasta `cli.entry()`.
 
-`DummyTerminal(answers, width=200)` consume respuestas guionadas en orden y registra todo en `lines` (salida) y `errors`. Si una pregunta no tiene respuesta preparada lanza `AssertionError`; `unused_answers` permite verificar que no sobraron.
+`DummyTerminal(answers, width=200)` consume respuestas guionadas en orden y registra todo en `lines` (salida, incluidos los avisos de reintento) y `errors`. Si una pregunta no tiene respuesta preparada lanza `AssertionError`; `unused_answers` permite verificar que no sobraron.
 
 ## `Supervisor`
 
@@ -73,7 +75,7 @@ ProcessSupervisor(pid_path, lock_path, log_path, command, env)
     .start_time(pid) -> int | None     # staticmethod: campo 22 de /proc/<pid>/stat; None si no existe o es zombie
 ```
 
-`cli.notifier_supervisor(config)` arma el comando (`python -m tempo notifier`) y el `PYTHONPATH`. El funcionamiento completo, incluida la carrera del arranque, está en [notificaciones.md](../notificaciones.md#processsupervisor).
+`cli.notifier_supervisor(config)` arma el comando (`python -m tempo.notifier_main`) y el `PYTHONPATH`. El funcionamiento completo, incluida la carrera del arranque, está en [notificaciones.md](../notificaciones.md#processsupervisor).
 
 `FakeSupervisor` cuenta las llamadas en `calls`.
 

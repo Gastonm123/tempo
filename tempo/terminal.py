@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -25,12 +25,15 @@ class Picked:
 
 @dataclass(frozen=True, slots=True)
 class Typed:
-    """Se escribio un valor que no esta en la lista."""
+    """Se escribio uno de los nombres aceptados que no esta en la lista."""
 
     text: str
 
 
 type Choice = Picked | Typed
+
+type Validator = Callable[[str], str | None]
+"""Devuelve el motivo por el que una respuesta no sirve, o None si sirve."""
 
 
 class Terminal(Protocol):
@@ -46,16 +49,21 @@ class Terminal(Protocol):
         """Ancho disponible en caracteres."""
         ...
 
-    def text(self, prompt: str, default: str = "") -> str:
-        """Pide un texto. Enter sin escribir nada devuelve `default`."""
+    def text(self, prompt: str, default: str = "", validate: Validator | None = None) -> str:
+        """Pide un texto. Enter sin escribir nada devuelve `default`, que no se muestra.
+
+        Con `validate`, muestra el motivo y repite la pregunta mientras la
+        respuesta no sirva.
+        """
         ...
 
     def choose(self, prompt: str, options: Sequence[str], *, title: str,
-               allow_typed: bool) -> Choice:
-        """Muestra `title` y debajo una lista numerada, y pide elegir un numero.
+               names: Sequence[str] = ()) -> Choice:
+        """Muestra `title` y debajo una lista numerada, y pide elegir una opcion.
 
-        Con allow_typed=True tambien acepta un texto que no este en la lista.
-        Repite la pregunta hasta obtener una respuesta valida.
+        Acepta el numero o el texto exacto de una opcion (Picked), o uno de
+        `names` que no este en la lista (Typed). Repite la pregunta hasta obtener
+        una respuesta valida.
         """
         ...
 
@@ -74,14 +82,14 @@ class Terminal(Protocol):
 # --- Interpretacion pura de respuestas -------------------------------------
 
 
-def read_choice(answer: str, options: Sequence[str], *, allow_typed: bool) -> Choice | None:
+def read_choice(answer: str, options: Sequence[str], names: Sequence[str]) -> Choice | None:
     """None = respuesta invalida (hay que volver a preguntar)."""
     value = answer.strip()
     if value.isdigit() and 1 <= int(value) <= len(options):
         return Picked(int(value) - 1)
     if value in options:
         return Picked(list(options).index(value))
-    if allow_typed and value and not value.isdigit():
+    if value in names:
         return Typed(value)
     return None
 
@@ -101,8 +109,10 @@ def choice_lines(title: str, options: Sequence[str]) -> list[str]:
             *(f"  {number}) {option}" for number, option in enumerate(options, start=1))]
 
 
-def choose_hint(allow_typed: bool) -> str:
-    return "número o nombre nuevo" if allow_typed else "número"
+INVALID_OPTION = "Opcion invalida."
+INVALID_YES_NO = "Responde s o n."
+INVALID_DURATION = "Duracion invalida."
+DURATION_HINT = "(p. ej. 1h, 90m)"
 
 
 # --- Implementaciones ------------------------------------------------------
@@ -120,35 +130,38 @@ class PosixTerminal(Terminal):
     def width(self) -> int:
         return shutil.get_terminal_size().columns
 
-    def text(self, prompt: str, default: str = "") -> str:
-        shown = f"{prompt} [{default}]: " if default else f"{prompt}: "
-        return input(shown).strip() or default
+    def text(self, prompt: str, default: str = "", validate: Validator | None = None) -> str:
+        while True:
+            value = input(f"{prompt}: ").strip() or default
+            problem = None if validate is None else validate(value)
+            if problem is None:
+                return value
+            print(f"  {problem}")
 
     def choose(self, prompt: str, options: Sequence[str], *, title: str,
-               allow_typed: bool) -> Choice:
+               names: Sequence[str] = ()) -> Choice:
         for line in choice_lines(title, options):
             print(line)
         while True:
-            choice = read_choice(input(f"{prompt} ({choose_hint(allow_typed)}): "), options,
-                                 allow_typed=allow_typed)
+            choice = read_choice(input(f"{prompt}: "), options, names)
             if choice is not None:
                 return choice
-            print("  Opción inválida.")
+            print(f"  {INVALID_OPTION}")
 
     def confirm(self, prompt: str) -> bool:
         while True:
             answer = read_yes_no(input(f"{prompt} [s/N]: "))
             if answer is not None:
                 return answer
-            print("  Respondé s o n.")
+            print(f"  {INVALID_YES_NO}")
 
     def duration(self, prompt: str) -> int:
         while True:
-            match durations.parse(input(f"{prompt} (p. ej. 1h, 90m, 1h30m): ")):
+            match durations.parse(input(f"{prompt} {DURATION_HINT}: ")):
                 case Ok(seconds):
                     return seconds
                 case Err():
-                    print("  Duración inválida.")
+                    print(f"  {INVALID_DURATION}")
 
 
 class DummyTerminal(Terminal):
@@ -180,22 +193,29 @@ class DummyTerminal(Terminal):
     def width(self) -> int:
         return self._width
 
-    def text(self, prompt: str, default: str = "") -> str:
-        return self._next(prompt).strip() or default
+    def text(self, prompt: str, default: str = "", validate: Validator | None = None) -> str:
+        while True:
+            value = self._next(prompt).strip() or default
+            problem = None if validate is None else validate(value)
+            if problem is None:
+                return value
+            self.lines.append(f"  {problem}")
 
     def choose(self, prompt: str, options: Sequence[str], *, title: str,
-               allow_typed: bool) -> Choice:
+               names: Sequence[str] = ()) -> Choice:
         self.lines.extend(choice_lines(title, options))
         while True:
-            choice = read_choice(self._next(prompt), options, allow_typed=allow_typed)
+            choice = read_choice(self._next(prompt), options, names)
             if choice is not None:
                 return choice
+            self.lines.append(f"  {INVALID_OPTION}")
 
     def confirm(self, prompt: str) -> bool:
         while True:
             answer = read_yes_no(self._next(prompt))
             if answer is not None:
                 return answer
+            self.lines.append(f"  {INVALID_YES_NO}")
 
     def duration(self, prompt: str) -> int:
         while True:
@@ -203,7 +223,7 @@ class DummyTerminal(Terminal):
                 case Ok(seconds):
                     return seconds
                 case Err():
-                    pass
+                    self.lines.append(f"  {INVALID_DURATION}")
 
     @property
     def unused_answers(self) -> list[str]:

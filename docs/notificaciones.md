@@ -1,6 +1,6 @@
 # Notificaciones y proceso de aviso
 
-La CLI termina después de cada comando, así que los avisos los manda un proceso aparte, `tempo notifier`. No guarda estado propio relevante: lee la base, calcula el próximo evento y duerme hasta entonces. La base sigue siendo la única fuente de verdad; matar el proceso no pierde nada.
+La CLI termina después de cada comando, así que los avisos los manda un proceso aparte, que se lanza con `python -m tempo.notifier_main` (no es un comando de la CLI). No guarda estado propio relevante: lee la base, calcula el próximo evento y duerme hasta entonces. La base sigue siendo la única fuente de verdad; matar el proceso no pierde nada.
 
 Tres piezas:
 
@@ -40,8 +40,8 @@ Las reglas que salen de la tabla:
 Textos:
 
 ```
-Sesión terminada   Se cumplió el tiempo de web (1:30). Usá tempo extend para seguir o tempo stop para cerrarla.
-Pausa larga        La sesión de web lleva 1:00 pausada.
+Sesión terminada   Se cumplió el tiempo de web (1h30m). Usá tempo extend para seguir o tempo stop para cerrarla.
+Pausa larga        La sesión de web lleva 1h pausada. Usá tempo resume para seguir.
 ```
 
 El título no repite el nombre de la aplicación: con la aplicación registrada en Windows, el encabezado del toast ya muestra "tempo".
@@ -76,7 +76,7 @@ Si el hijo muere antes de que el supervisor lea su inicio (por ejemplo, por un e
 
 ```python
 os.posix_spawn(
-    sys.executable, [sys.executable, "-m", "tempo", "notifier"], env,   # env con PYTHONPATH
+    sys.executable, [sys.executable, "-m", "tempo.notifier_main"], env,   # env con PYTHONPATH
     file_actions=[
         (POSIX_SPAWN_OPEN, 0, os.devnull, O_RDONLY, 0),
         (POSIX_SPAWN_OPEN, 1, ".../notifier.log", O_WRONLY | O_CREAT | O_APPEND, 0o644),
@@ -110,7 +110,7 @@ class Alerter(Protocol):
 
 `send` es un aviso común. `alarm` suena en loop hasta `silence()` o hasta `duration`. `silence` corta la alarma si hay una sonando y, si no, no hace nada.
 
-`build_alerter(config)` devuelve `NullAlerter` si `TEMPO_NO_NOTIFY=1` y, si no, `FirstWorkingAlerter([WindowsToastAlerter(), NotifySendAlerter()])`. Para `send` y `alarm` prueba en orden y devuelve el primer `Ok` o un `AlertFailed` con los motivos de todos. `silence` se pide a todos, porque no se sabe cuál mostró la alarma.
+`notifier_main.build_alerter(config)` devuelve `NullAlerter` si `TEMPO_NO_NOTIFY=1` y, si no, `FirstWorkingAlerter([WindowsToastAlerter(), NotifySendAlerter()])`. Para `send` y `alarm` prueba en orden y devuelve el primer `Ok` o un `AlertFailed` con los motivos de todos. `silence` se pide a todos, porque no se sabe cuál mostró la alarma.
 
 ### Toast de Windows desde WSL
 

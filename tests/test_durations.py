@@ -37,6 +37,13 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(durations.format_hm_up(60), "0:01")
         self.assertEqual(durations.format_hm_up(0), "0:00")
 
+    def test_format_duration(self) -> None:
+        cases = {0: "0m", 59: "0m", 300: "5m", 5400: "1h30m", 7200: "2h", 36000 + 300: "10h5m"}
+        for seconds, expected in cases.items():
+            with self.subTest(seconds=seconds):
+                self.assertEqual(durations.format_duration(seconds), expected)
+        self.assertEqual(durations.format_duration_up(59), "1m")
+
     def test_format_hours(self) -> None:
         self.assertEqual(durations.format_hours(5400), "1.50")
         self.assertEqual(durations.format_hours(900), "0.25")

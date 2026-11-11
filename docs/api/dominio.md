@@ -51,11 +51,11 @@ class ActiveStatus:
 | Método | Ok | Err |
 |---|---|---|
 | `status()` | `ActiveStatus` | `NoActiveSession` |
-| `start(project_id, duration_s, description)` | `ActiveStatus` | `ProjectNotFound`, `ProjectArchived`, `SessionAlreadyActive` |
+| `start(project_id, duration_s, description)` | `ActiveStatus` | `ProjectNotFound`, `ProjectArchived`, `EmptyDescription`, `SessionAlreadyActive` |
 | `pause()` | `ActiveStatus` | `NoActiveSession`, `SessionExpired`, `AlreadyPaused` |
 | `resume()` | `ActiveStatus` | `NoActiveSession`, `NotPaused` |
 | `extend(seconds)` | `ActiveStatus` | `NoActiveSession` |
-| `stop(description \| None)` | `Session` cerrada | `NoActiveSession` |
+| `stop(description \| None)` | `Session` cerrada | `NoActiveSession`, `EmptyDescription` |
 
 ## Sesiones
 
@@ -65,34 +65,34 @@ class ActiveStatus:
 | `sessions_between(start, end, project_ids=None)` | `list[Session]` | — |
 | `get_session(id)` | `Session` | `SessionNotFound` |
 | `is_month_locked(month)` | `bool` | — |
-| `edit_session(id, *, project_id, description, start_at, end_at)` | `Session` | `SessionNotFound`, `SessionIsActive`, `MonthLocked`, `InvalidInterval`, `ProjectNotFound` |
+| `edit_session(id, *, project_id, description, start_at, end_at)` | `Session` | `SessionNotFound`, `SessionIsActive`, `MonthLocked`, `InvalidInterval`, `ProjectNotFound`, `EmptyDescription` |
 | `delete_session(id)` | `None` | `SessionNotFound`, `MonthLocked` |
 
 ## Clientes
 
 | Método | Ok | Err |
 |---|---|---|
-| `add_client(name)` | `Client` | `InvalidName`, `NameTaken` |
+| `add_client(name)` | `Client` | `InvalidName`, `ClientNameTaken` |
 | `find_client(name)` | `Client` (incluye archivados) | `ClientNotFound` |
 | `list_clients(*, include_archived=False)` | `list[Client]` | — |
 | `client_locked_month(id)` | `str \| None`: primer mes exportado con sesiones de algún proyecto del cliente, incluidos los archivados | — |
-| `edit_client(id, name)` | `None` | `ClientNotFound`, `MonthLocked`, `InvalidName`, `NameTaken` |
+| `edit_client(id, name)` | `None` | `ClientNotFound`, `MonthLocked`, `InvalidName`, `ClientNameTaken` |
 | `client_projects(id)` | `list[Project]` activos | — |
-| `archive_client(id, *, cascade)` | `tuple[Project, ...]` archivados en cascada | `ClientNotFound`, `ClientHasActiveProjects` |
-| `unarchive_client(id)` | `None` | `ClientNotFound` |
+| `archive_client(id, *, cascade)` | `tuple[Project, ...]` archivados en cascada | `ClientNotFound`, `ClientArchived`, `ClientHasActiveProjects` |
+| `unarchive_client(id)` | `None` | `ClientNotFound`, `ClientNotArchived` |
 
 ## Proyectos
 
 | Método | Ok | Err |
 |---|---|---|
-| `add_project(name, client_id \| None, description)` | `Project` | `InvalidName`, `ClientNotFound`, `ClientArchived`, `NameTaken` |
+| `add_project(name, client_id \| None, description)` | `Project` | `InvalidName`, `ClientNotFound`, `ClientArchived`, `ProjectNameTaken` |
 | `find_project(name)` | `Project` (incluye archivados) | `ProjectNotFound` |
 | `find_projects(names)` | `list[Project]` en el orden pedido | `ProjectNotFound` del primero que falte |
 | `list_projects(*, include_archived=False)` | `list[Project]` | — |
 | `project_locked_month(id)` | `str \| None`: primer mes exportado con sesiones del proyecto | — |
-| `edit_project(id, *, name, description)` | `None` | `ProjectNotFound`, `MonthLocked`, `InvalidName`, `NameTaken` |
-| `archive_project(id)` | `None` | `ProjectNotFound` |
-| `unarchive_project(id, *, with_client)` | `None` | `ProjectNotFound`, `ClientArchived` |
+| `edit_project(id, *, name, description)` | `None` | `ProjectNotFound`, `MonthLocked`, `InvalidName`, `ProjectNameTaken` |
+| `archive_project(id)` | `None` | `ProjectNotFound`, `ProjectArchived` |
+| `unarchive_project(id, *, with_client)` | `None` | `ProjectNotFound`, `ProjectNotArchived`, `ClientArchived` |
 
 ## Reportes
 
@@ -115,7 +115,9 @@ Todas son dataclasses `frozen` en `result.py`; `DomainError` es su unión.
 | `InvalidDate` | `text` | parseo de fechas en la CLI |
 | `InvalidMonth` | `text` | `report.parse_month` |
 | `InvalidName` | `text` | nombre vacío |
-| `NameTaken` | `name` | `UNIQUE` de clientes o proyectos |
+| `ProjectNameTaken` | `name` | `UNIQUE` de proyectos |
+| `ClientNameTaken` | `name` | `UNIQUE` de clientes |
+| `EmptyDescription` | — | trabajo realizado vacío al iniciar, cerrar o editar una sesión |
 | `SessionAlreadyActive` | `session_id` | `one_active` |
 | `NoActiveSession` | — | |
 | `SessionNotFound` | `session_id` | |
@@ -124,9 +126,11 @@ Todas son dataclasses `frozen` en `result.py`; `DomainError` es su unión.
 | `NotPaused` | — | |
 | `SessionExpired` | `expired_at` | pausa sobre una sesión vencida |
 | `ProjectNotFound` | `name` (o el id como texto) | |
-| `ProjectArchived` | `name` | |
+| `ProjectArchived` | `name` | iniciar en un proyecto archivado o archivarlo de nuevo |
+| `ProjectNotArchived` | `name` | desarchivar un proyecto activo |
 | `ClientNotFound` | `name` (o el id como texto) | |
 | `ClientArchived` | `name` | |
+| `ClientNotArchived` | `name` | desarchivar un cliente activo |
 | `ClientHasActiveProjects` | `projects: tuple[str, ...]` | archivar sin `cascade` |
 | `InvalidInterval` | `start`, `end` | `end <= start` al editar |
 | `MonthLocked` | `month` | edición o borrado en un mes exportado |

@@ -15,12 +15,15 @@ from tempo.result import (
     AlreadyPaused,
     ClientArchived,
     ClientHasActiveProjects,
+    ClientNotArchived,
+    EmptyDescription,
     Err,
     InvalidInterval,
     InvalidName,
     MonthLocked,
     NotPaused,
     ProjectArchived,
+    ProjectNotArchived,
     SessionAlreadyActive,
     SessionExpired,
     SessionIsActive,
@@ -45,12 +48,12 @@ class SessionFlowTest(unittest.TestCase):
         self.assertEqual(status.session.description, "maquetar")
 
     def test_second_start_rejected(self) -> None:
-        first = ok(self.rig.tempo.start(self.project.id, HOUR, ""))
-        again = self.rig.tempo.start(self.project.id, HOUR, "")
+        first = ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
+        again = self.rig.tempo.start(self.project.id, HOUR, "trabajo")
         self.assertEqual(again, Err(SessionAlreadyActive(first.session.id)))
 
     def test_pause_freezes_remaining(self) -> None:
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         self.advance(20)
         ok(self.rig.tempo.pause())
         self.advance(90)
@@ -62,11 +65,11 @@ class SessionFlowTest(unittest.TestCase):
         self.assertEqual(ok(self.rig.tempo.status()).state.expires_at, at(11, 9, 12, 30))
 
     def test_resume_when_not_paused(self) -> None:
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         self.assertEqual(self.rig.tempo.resume(), Err(NotPaused()))
 
     def test_cannot_pause_expired(self) -> None:
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         self.advance(70)
         self.assertEqual(self.rig.tempo.pause(), Err(SessionExpired(at(11, 9, 11))))
 
@@ -80,7 +83,7 @@ class SessionFlowTest(unittest.TestCase):
         self.assertEqual(self.rig.tempo.worked_s(session), HOUR)
 
     def test_stop_while_paused_closes_pause(self) -> None:
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         self.advance(20)
         ok(self.rig.tempo.pause())
         self.advance(15)
@@ -90,7 +93,7 @@ class SessionFlowTest(unittest.TestCase):
         self.assertEqual(self.rig.tempo.paused_s(session), 15 * 60)
 
     def test_extend_after_expiry_gap_does_not_count(self) -> None:
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         self.advance(100)  # 11:40, vencida a las 11:00
         status = ok(self.rig.tempo.extend(30 * 60))
         self.assertEqual(status.state.kind, "running")
@@ -101,15 +104,21 @@ class SessionFlowTest(unittest.TestCase):
         self.assertEqual(self.rig.tempo.worked_s(session), HOUR + 30 * 60)
         self.assertEqual(self.rig.tempo.paused_s(session), 40 * 60)
 
+    def test_description_required(self) -> None:
+        self.assertEqual(self.rig.tempo.start(self.project.id, HOUR, "  "),
+                         Err(EmptyDescription()))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "maquetar"))
+        self.assertEqual(self.rig.tempo.stop(" "), Err(EmptyDescription()))
+
     def test_archived_project_cannot_start(self) -> None:
         ok(self.rig.tempo.archive_project(self.project.id))
         self.assertEqual(
-            self.rig.tempo.start(self.project.id, HOUR, ""), Err(ProjectArchived("web"))
+            self.rig.tempo.start(self.project.id, HOUR, "trabajo"), Err(ProjectArchived("web"))
         )
 
     def test_every_write_syncs_supervisor(self) -> None:
         before = self.rig.supervisor.calls
-        ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         ok(self.rig.tempo.pause())
         ok(self.rig.tempo.resume())
         ok(self.rig.tempo.extend(60))
@@ -168,12 +177,15 @@ class EditDeleteTest(unittest.TestCase):
         self.assertEqual(result, Err(MonthLocked("2026-09")))
 
     def test_open_session_cannot_be_edited(self) -> None:
-        active = ok(self.rig.tempo.start(self.project.id, HOUR, ""))
+        active = ok(self.rig.tempo.start(self.project.id, HOUR, "trabajo"))
         result = self.rig.tempo.edit_session(
             active.session.id, project_id=self.project.id, description="",
             start_at=at(11, 9, 10), end_at=at(11, 9, 11),
         )
         self.assertEqual(result, Err(SessionIsActive(active.session.id)))
+
+    def test_edit_requires_description(self) -> None:
+        self.assertEqual(self.edit(description=" "), Err(EmptyDescription()))
 
     def test_delete(self) -> None:
         ok(self.rig.tempo.delete_session(self.session.id))
@@ -212,6 +224,15 @@ class ClientsProjectsTest(unittest.TestCase):
         self.assertEqual([c.name for c in self.tempo.list_clients()], ["Acme"])
         self.assertEqual(self.tempo.list_projects(), [])
 
+    def test_repeated_archive_or_unarchive_rejected(self) -> None:
+        self.assertEqual(self.tempo.unarchive_project(self.blog.id, with_client=False),
+                         Err(ProjectNotArchived("blog")))
+        self.assertEqual(self.tempo.unarchive_client(self.acme.id), Err(ClientNotArchived("Acme")))
+        ok(self.tempo.archive_client(self.acme.id, cascade=True))
+        self.assertEqual(self.tempo.archive_project(self.blog.id), Err(ProjectArchived("blog")))
+        self.assertEqual(self.tempo.archive_client(self.acme.id, cascade=True),
+                         Err(ClientArchived("Acme")))
+
     def test_unarchive_project_with_archived_client(self) -> None:
         ok(self.tempo.archive_client(self.acme.id, cascade=True))
         self.assertEqual(
@@ -229,7 +250,7 @@ class ClientsProjectsTest(unittest.TestCase):
         )
 
     def test_edit_keeps_sessions(self) -> None:
-        ok(self.tempo.start(self.tienda.id, HOUR, ""))
+        ok(self.tempo.start(self.tienda.id, HOUR, "trabajo"))
         ok(self.tempo.edit_project(self.tienda.id, name="tienda-online", description=" Shop "))
         ok(self.tempo.edit_client(self.acme.id, "Acme SRL"))
         session = ok(self.tempo.status()).session
@@ -237,7 +258,7 @@ class ClientsProjectsTest(unittest.TestCase):
         self.assertEqual(ok(self.tempo.find_project("tienda-online")).description, "Shop")
 
     def test_exported_month_blocks_edit(self) -> None:
-        ok(self.tempo.start(self.tienda.id, HOUR, ""))
+        ok(self.tempo.start(self.tienda.id, HOUR, "trabajo"))
         ok(self.tempo.stop(None))
         self.rig.store.add_export("2026-11", at(11, 9, 12))
         locked = Err(MonthLocked("2026-11"))

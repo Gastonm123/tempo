@@ -34,7 +34,10 @@ from tempo.result import (
     AlreadyPaused,
     ClientArchived,
     ClientHasActiveProjects,
+    ClientNameTaken,
+    ClientNotArchived,
     ClientNotFound,
+    EmptyDescription,
     EmptyMonth,
     Err,
     FileExists,
@@ -42,12 +45,13 @@ from tempo.result import (
     InvalidName,
     MonthLocked,
     MonthNotClosed,
-    NameTaken,
     NoActiveSession,
     NotPaused,
     Ok,
     OpenSessionInMonth,
     ProjectArchived,
+    ProjectNameTaken,
+    ProjectNotArchived,
     ProjectNotFound,
     Result,
     SessionAlreadyActive,
@@ -59,9 +63,10 @@ from tempo.sessions import Interval, SessionState
 from tempo.store_files import ReportStore
 from tempo.supervisor import Supervisor
 
-type StartError = SessionAlreadyActive | ProjectNotFound | ProjectArchived
+type StartError = SessionAlreadyActive | ProjectNotFound | ProjectArchived | EmptyDescription
 type PauseError = NoActiveSession | AlreadyPaused | SessionExpired
-type EditError = SessionNotFound | SessionIsActive | MonthLocked | InvalidInterval | ProjectNotFound
+type EditError = (SessionNotFound | SessionIsActive | MonthLocked | InvalidInterval
+                  | ProjectNotFound | EmptyDescription)
 type DeleteError = SessionNotFound | MonthLocked
 type ExportError = MonthNotClosed | OpenSessionInMonth | EmptyMonth
 type Format = Literal["csv", "md"]
@@ -78,6 +83,11 @@ class ActiveStatus:
 def clean_name(text: str) -> Result[str, InvalidName]:
     name = text.strip()
     return Ok(name) if name else Err(InvalidName(text))
+
+
+def clean_description(text: str) -> Result[str, EmptyDescription]:
+    description = text.strip()
+    return Ok(description) if description else Err(EmptyDescription())
 
 
 def atomic_write[**P, T, E](
@@ -202,9 +212,12 @@ class Tempo:
             return Err(ProjectNotFound(str(project_id)))
         if project.archived:
             return Err(ProjectArchived(project.name))
-        added = self._store.add_session(
-            project_id, description.strip(), self._clock.now(), duration_s
-        )
+        match clean_description(description):
+            case Err() as empty:
+                return empty
+            case Ok(clean):
+                pass
+        added = self._store.add_session(project_id, clean, self._clock.now(), duration_s)
         match added:
             case Err():
                 return added
@@ -263,7 +276,9 @@ class Tempo:
         return Ok(self._status_of(session.id))
 
     @atomic_write
-    def stop(self, description: str | None) -> Result[Session, NoActiveSession]:
+    def stop(
+        self, description: str | None
+    ) -> Result[Session, NoActiveSession | EmptyDescription]:
         """Cierra la sesion. Fin = ahora, o el vencimiento si ya vencio.
 
         `description` None conserva la descripcion cargada al iniciar.
@@ -274,6 +289,13 @@ class Tempo:
             case Ok(active):
                 pass
         session = active.session
+        final_description = session.description
+        if description is not None:
+            match clean_description(description):
+                case Err() as empty:
+                    return empty
+                case Ok(final_description):
+                    pass
         end = calc.effective_end(
             session.start_at, session.duration_s, session.pauses, self._clock.now()
         )
@@ -282,7 +304,7 @@ class Tempo:
         self._store.update_session(
             session.id,
             project_id=session.project_id,
-            description=session.description if description is None else description.strip(),
+            description=final_description,
             start_at=session.start_at,
             duration_s=session.duration_s,
             end_at=end,
@@ -334,6 +356,11 @@ class Tempo:
             return Err(InvalidInterval(start_at, end_at))
         if self._store.get_project(project_id) is None:
             return Err(ProjectNotFound(str(project_id)))
+        match clean_description(description):
+            case Err() as empty:
+                return empty
+            case Ok(clean):
+                pass
         # Las pausas se recortan al nuevo intervalo; las que quedan afuera se descartan.
         pauses = [
             Interval(max(p.start, start_at), min(p.end, end_at))
@@ -343,7 +370,7 @@ class Tempo:
         self._store.update_session(
             session_id,
             project_id=project_id,
-            description=description.strip(),
+            description=clean,
             start_at=start_at,
             duration_s=session.duration_s,
             end_at=end_at,
@@ -367,7 +394,7 @@ class Tempo:
     # --- Clientes -----------------------------------------------------------
 
     @atomic_write
-    def add_client(self, name: str) -> Result[Client, InvalidName | NameTaken]:
+    def add_client(self, name: str) -> Result[Client, InvalidName | ClientNameTaken]:
         match clean_name(name):
             case Err() as invalid:
                 return invalid
@@ -394,7 +421,7 @@ class Tempo:
     @atomic_write
     def edit_client(
         self, client_id: int, name: str
-    ) -> Result[None, ClientNotFound | MonthLocked | InvalidName | NameTaken]:
+    ) -> Result[None, ClientNotFound | MonthLocked | InvalidName | ClientNameTaken]:
         """Cambia el nombre. No procede si algun proyecto del cliente tiene sesiones en
         un mes exportado: el reporte guardado dejaria de coincidir con la base."""
         if self._store.get_client(client_id) is None:
@@ -417,11 +444,14 @@ class Tempo:
     @atomic_write
     def archive_client(
         self, client_id: int, *, cascade: bool
-    ) -> Result[tuple[Project, ...], ClientNotFound | ClientHasActiveProjects]:
+    ) -> Result[tuple[Project, ...], ClientNotFound | ClientArchived | ClientHasActiveProjects]:
         """Archiva un cliente. Con cascade=True archiva tambien sus proyectos activos
         y los devuelve; con cascade=False solo procede si no tiene proyectos activos."""
-        if self._store.get_client(client_id) is None:
+        client = self._store.get_client(client_id)
+        if client is None:
             return Err(ClientNotFound(str(client_id)))
+        if client.archived:
+            return Err(ClientArchived(client.name))
         projects = tuple(self.client_projects(client_id))
         if projects and not cascade:
             return Err(ClientHasActiveProjects(tuple(p.name for p in projects)))
@@ -431,10 +461,13 @@ class Tempo:
         return Ok(projects)
 
     @atomic_write
-    def unarchive_client(self, client_id: int) -> Result[None, ClientNotFound]:
-        """Reactiva solo el cliente; sus proyectos se reactivan uno por uno."""
-        if self._store.get_client(client_id) is None:
+    def unarchive_client(self, client_id: int) -> Result[None, ClientNotFound | ClientNotArchived]:
+        """Desarchiva solo el cliente; sus proyectos se desarchivan uno por uno."""
+        client = self._store.get_client(client_id)
+        if client is None:
             return Err(ClientNotFound(str(client_id)))
+        if not client.archived:
+            return Err(ClientNotArchived(client.name))
         self._store.set_client_archived(client_id, False)
         return Ok(None)
 
@@ -443,7 +476,7 @@ class Tempo:
     @atomic_write
     def add_project(
         self, name: str, client_id: int | None, description: str
-    ) -> Result[Project, InvalidName | NameTaken | ClientNotFound | ClientArchived]:
+    ) -> Result[Project, InvalidName | ProjectNameTaken | ClientNotFound | ClientArchived]:
         match clean_name(name):
             case Err() as invalid:
                 return invalid
@@ -491,7 +524,7 @@ class Tempo:
     @atomic_write
     def edit_project(
         self, project_id: int, *, name: str, description: str
-    ) -> Result[None, ProjectNotFound | MonthLocked | InvalidName | NameTaken]:
+    ) -> Result[None, ProjectNotFound | MonthLocked | InvalidName | ProjectNameTaken]:
         """Cambia nombre y descripcion; el cliente no cambia nunca. No procede si el
         proyecto tiene sesiones en un mes exportado."""
         if self._store.get_project(project_id) is None:
@@ -509,21 +542,26 @@ class Tempo:
         return updated
 
     @atomic_write
-    def archive_project(self, project_id: int) -> Result[None, ProjectNotFound]:
-        if self._store.get_project(project_id) is None:
+    def archive_project(self, project_id: int) -> Result[None, ProjectNotFound | ProjectArchived]:
+        project = self._store.get_project(project_id)
+        if project is None:
             return Err(ProjectNotFound(str(project_id)))
+        if project.archived:
+            return Err(ProjectArchived(project.name))
         self._store.set_project_archived(project_id, True)
         return Ok(None)
 
     @atomic_write
     def unarchive_project(
         self, project_id: int, *, with_client: bool
-    ) -> Result[None, ProjectNotFound | ClientArchived]:
-        """Reactiva un proyecto. Si su cliente esta archivado, solo procede con
-        with_client=True, que reactiva tambien al cliente."""
+    ) -> Result[None, ProjectNotFound | ProjectNotArchived | ClientArchived]:
+        """Desarchiva un proyecto. Si su cliente esta archivado, solo procede con
+        with_client=True, que desarchiva tambien al cliente."""
         project = self._store.get_project(project_id)
         if project is None:
             return Err(ProjectNotFound(str(project_id)))
+        if not project.archived:
+            return Err(ProjectNotArchived(project.name))
         client = None if project.client_id is None else self._store.get_client(project.client_id)
         if client is not None and client.archived and not with_client:
             return Err(ClientArchived(client.name))

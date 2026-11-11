@@ -25,7 +25,7 @@ from tempo.store_files import DiskReportStore
 from tests.helpers import HOUR, TZ, Rig, at, make_rig, ok
 
 
-def closed(rig: Rig, project: Project, start: datetime, end: datetime, text: str = "") -> None:
+def closed(rig: Rig, project: Project, start: datetime, end: datetime, text: str = "trabajo") -> None:
     rig.clock.set(start)
     ok(rig.tempo.start(project.id, 24 * HOUR, text))
     rig.clock.set(end)
@@ -73,18 +73,18 @@ class BuildAndRenderTest(unittest.TestCase):
 
     def test_terminal_groups_by_month(self) -> None:
         text = render_to_text(TerminalRenderer(), self.rig.tempo.report(at(9, 1, 0), at(11, 1, 0)))
-        self.assertIn("── Septiembre 2026 ──", text)
-        self.assertIn("── Octubre 2026 ──", text)
-        self.assertIn("Total del mes: 3:30", text)
-        self.assertIn("Total: 6:30", text)
+        self.assertIn("-- Septiembre 2026 --", text)
+        self.assertIn("-- Octubre 2026 --", text)
+        self.assertIn("Total del mes: 3h30m", text)
+        self.assertIn("Total: 6h30m", text)
         self.assertIn("2026-09-30 22:00  2026-10-01 01:00", text)
 
     def test_terminal_truncates_description_to_width(self) -> None:
-        # Las otras columnas ocupan 75 caracteres: a la descripcion le quedan 10.
+        # Las otras columnas ocupan 77 caracteres: a la descripcion le quedan 10.
         report = self.rig.tempo.report(at(9, 1, 0), at(10, 1, 0))
-        lines = render_to_text(TerminalRenderer(width=85), report).splitlines()
-        self.assertTrue(all(len(line) <= 85 for line in lines))
-        self.assertIn("fix | urg…", next(line for line in lines if "2026-09-30" in line))
+        lines = render_to_text(TerminalRenderer(width=87), report).splitlines()
+        self.assertTrue(all(len(line) <= 87 for line in lines))
+        self.assertIn("fix | u...", next(line for line in lines if "2026-09-30" in line))
 
     def test_csv(self) -> None:
         report = self.rig.tempo.report(at(9, 1, 0), at(10, 1, 0))
@@ -100,7 +100,7 @@ class BuildAndRenderTest(unittest.TestCase):
         self.assertIn("# Reporte de horas — Octubre 2026", text)
         self.assertIn("- **Total del mes:** 3:30", text)
         self.assertIn("## Resumen por proyecto", text)
-        self.assertIn("| app | — | 1 | 1:30 |", text)
+        self.assertIn("| app |  | 1 | 1:30 |", text)
         sept = render_to_text(MarkdownRenderer(), ok(self.rig.tempo.month_report("2026-09", None)))
         self.assertNotIn("## Resumen por proyecto", sept)
         self.assertIn("fix \\| urgente", sept)
@@ -122,7 +122,7 @@ class ExportTest(unittest.TestCase):
     def test_open_session_blocks_export(self) -> None:
         rig = make_rig(at(10, 31, 23))
         project = ok(rig.tempo.add_project("x", None, ""))
-        active = ok(rig.tempo.start(project.id, 24 * HOUR, ""))
+        active = ok(rig.tempo.start(project.id, 24 * HOUR, "trabajo"))
         rig.clock.set(at(11, 2, 10))
         self.assertEqual(rig.tempo.export_month("2026-10", "md"),
                          Err(OpenSessionInMonth("2026-10", active.session.id)))

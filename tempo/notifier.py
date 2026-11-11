@@ -26,7 +26,7 @@ from tempo import sessions as calc
 from tempo.alerts import Alerter
 from tempo.clock import Clock
 from tempo.db import Store
-from tempo.durations import format_hm
+from tempo.durations import format_duration
 from tempo.models import Session
 from tempo.result import AlertFailed, Err, Ok, Result
 
@@ -101,7 +101,7 @@ class Notifier:
                     self._log_failure(self._alerter.alarm(
                         "Sesión terminada",
                         f"Se cumplió el tiempo de {session.project_name}"
-                        f" ({format_hm(session.duration_s)}). Usá tempo extend para"
+                        f" ({format_duration(session.duration_s)}). Usá tempo extend para"
                         " seguir o tempo stop para cerrarla.",
                         self._alarm_duration))
                 return None
@@ -115,7 +115,8 @@ class Notifier:
                     self._log_failure(self._alerter.send(
                         "Pausa larga",
                         f"La sesión de {session.project_name} lleva"
-                        f" {format_hm(int((now - pause.start).total_seconds()))} pausada."))
+                        f" {format_duration(int((now - pause.start).total_seconds()))} pausada."
+                        " Usá tempo resume para seguir."))
                 self._pause_alerts = (pause.id, passed)
                 if passed == len(self._pause_reminders):
                     return None

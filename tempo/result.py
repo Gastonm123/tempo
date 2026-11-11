@@ -103,8 +103,28 @@ class ClientNotFound:
 
 
 @dataclass(frozen=True, slots=True)
-class NameTaken:
+class ProjectNameTaken:
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClientNameTaken:
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectNotArchived:
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClientNotArchived:
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class EmptyDescription:
+    """La descripcion del trabajo realizado de una sesion es obligatoria."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +191,11 @@ type DomainError = (
     | ProjectNotFound
     | ProjectArchived
     | ClientNotFound
-    | NameTaken
+    | ProjectNameTaken
+    | ClientNameTaken
+    | ProjectNotArchived
+    | ClientNotArchived
+    | EmptyDescription
     | ClientHasActiveProjects
     | ClientArchived
     | InvalidInterval

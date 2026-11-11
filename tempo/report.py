@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 from typing import Protocol, TextIO
 
 from tempo import sessions as calc
-from tempo.durations import format_hm, format_hours
+from tempo.durations import format_duration, format_hm, format_hours
 from tempo.models import Session
 from tempo.result import Err, InvalidMonth, Ok, Result
 
@@ -24,7 +24,6 @@ MONTH_NAMES = (
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 )
 
-NO_CLIENT = "—"
 
 
 # --- Meses ----------------------------------------------------------------
@@ -184,7 +183,7 @@ _MIN_LAST_COLUMN = 10
 
 
 def _truncate(text: str, width: int) -> str:
-    return text if len(text) <= width else text[: width - 1] + "…"
+    return text if len(text) <= width else text[: width - 3] + "..."
 
 
 def text_table(
@@ -209,19 +208,23 @@ def text_table(
     return [line(headers), _GAP.join("-" * w for w in widths), *(line(r) for r in rows)]
 
 
-_DETAIL_HEADERS = ("Inicio", "Fin", "Proyecto", "Trabajado", "Pausas", "Duración",
-                   "Trabajo realizado")
+# La terminal va en ASCII; el Markdown exportado, con la ortografia normal.
+_TERMINAL_HEADERS = ("Inicio", "Fin", "Proyecto", "Trabajado", "En pausa", "Duracion",
+                     "Trabajo realizado")
+_MARKDOWN_HEADERS = ("Inicio", "Fin", "Proyecto", "Trabajado", "En pausa", "Duración",
+                     "Trabajo realizado")
+_SUMMARY_HEADERS = ("Proyecto", "Cliente", "Sesiones", "Trabajado")
 _TIME_COLUMNS = {3, 4, 5}
 
 
-def _detail_cells(row: ReportRow) -> list[str]:
+def _detail_cells(row: ReportRow, duration: Callable[[int], str]) -> list[str]:
     return [
         _when(row.start),
         _when(row.end),
         row.project,
-        format_hm(row.worked_s),
-        format_hm(row.paused_s),
-        format_hm(row.duration_s),
+        duration(row.worked_s),
+        duration(row.paused_s),
+        duration(row.duration_s),
         row.description,
     ]
 
@@ -235,21 +238,21 @@ class TerminalRenderer(Renderer):
 
     def render(self, report: Report, out: TextIO) -> None:
         if report.is_empty:
-            out.write("No hay sesiones en el período.\n")
+            out.write("No hay sesiones en el periodo.\n")
             return
         for group in report.months:
-            out.write(f"\n── {month_title(group.month)} ──\n")
-            for text in text_table(_DETAIL_HEADERS, [_detail_cells(r) for r in group.rows],
-                               _TIME_COLUMNS, self._width):
+            out.write(f"\n-- {month_title(group.month)} --\n")
+            rows = [_detail_cells(r, format_duration) for r in group.rows]
+            for text in text_table(_TERMINAL_HEADERS, rows, _TIME_COLUMNS, self._width):
                 out.write(text + "\n")
-            out.write(f"Total del mes: {format_hm(group.worked_s)}\n")
+            out.write(f"Total del mes: {format_duration(group.worked_s)}\n")
         if report.summary:
-            out.write("\n── Resumen por proyecto ──\n")
-            cells = [[p.project, p.client or NO_CLIENT, str(p.sessions), format_hm(p.worked_s)]
+            out.write("\n-- Resumen por proyecto --\n")
+            cells = [[p.project, p.client or "", str(p.sessions), format_duration(p.worked_s)]
                      for p in report.summary]
-            for text in text_table(("Proyecto", "Cliente", "Sesiones", "Horas"), cells, {2, 3}):
+            for text in text_table(_SUMMARY_HEADERS, cells, {2, 3}):
                 out.write(text + "\n")
-        out.write(f"\nTotal: {format_hm(report.worked_s)}\n")
+        out.write(f"\nTotal: {format_duration(report.worked_s)}\n")
 
 
 class CsvRenderer(Renderer):
@@ -290,24 +293,22 @@ class MarkdownRenderer(Renderer):
     """Reporte de un mes: encabezado, resumen por proyecto (si hay varios) y detalle."""
 
     def render(self, report: Report, out: TextIO) -> None:
-        months = [group.month for group in report.months]
-        title = month_title(months[0]) if len(months) == 1 else "Período"
         lines = [
-            f"# Reporte de horas — {title}",
+            f"# Reporte de horas — {month_title(report.months[0].month)}",
             "",
             f"- **Proyectos:** {_projects_label(report)}",
             f"- **Generado:** {_when(report.generated_at)}",
             f"- **Total del mes:** {format_hm(report.worked_s)}",
         ]
         if report.summary:
-            cells = [[p.project, p.client or NO_CLIENT, str(p.sessions), format_hm(p.worked_s)]
+            cells = [[p.project, p.client or "", str(p.sessions), format_hm(p.worked_s)]
                      for p in report.summary]
             cells.append(["**Total**", "", f"**{sum(p.sessions for p in report.summary)}**",
                           f"**{format_hm(report.worked_s)}**"])
             lines += ["", "## Resumen por proyecto", "",
-                      *_md_table(("Proyecto", "Cliente", "Sesiones", "Horas"), cells, {2, 3})]
+                      *_md_table(_SUMMARY_HEADERS, cells, {2, 3})]
         lines += ["", "## Detalle de sesiones", "",
-                  *_md_table(_DETAIL_HEADERS, [_detail_cells(r) for r in report.rows],
+                  *_md_table(_MARKDOWN_HEADERS, [_detail_cells(r, format_hm) for r in report.rows],
                              _TIME_COLUMNS)]
         out.write("\n".join(lines) + "\n")
 

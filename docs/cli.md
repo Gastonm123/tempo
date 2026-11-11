@@ -4,7 +4,7 @@
 tempo <comando> [opciones]
 ```
 
-Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()`.
+Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()`. Los errores de argumentos los escribe argparse, en español, con el uso del subcomando que falló.
 
 | Código | Significado |
 |---|---|
@@ -13,12 +13,20 @@ Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()
 | 2 | Uso incorrecto: argumentos inválidos o combinación de opciones no permitida |
 | 130 | Cancelado con Ctrl+C o Ctrl+D en una pregunta |
 
+## Textos
+
+- Los mensajes, preguntas y la ayuda de la CLI van en ASCII, sin tildes; se conservan la `ñ`, `¿` y `¡`. Los reportes exportados (Markdown, CSV) y las notificaciones de escritorio usan la ortografía normal.
+- Un adjetivo sin sustantivo escrito va en masculino (`Estado: pausado`); con sustantivo, concuerda (`Sesion pausada`).
+- Las duraciones se muestran como se escriben: `1h30m`, `5m`, `2h`. El Markdown exportado usa `H:MM` y el CSV horas decimales.
+- Causa y sugerencia se separan con un punto: `La sesion vencio a las 15:30. Usa ...`.
+
 ## Interacción
 
-- **Listas.** Llevan un título arriba (`Proyectos:`, `Clientes:`). Se elige por número o escribiendo el nombre exacto. Donde se acepta un valor nuevo (proyecto en `start`, cliente al crear un proyecto), cualquier otro texto no numérico se toma como nombre nuevo. Una respuesta inválida repite la pregunta.
+- **Listas.** Llevan un título (`Elige un proyecto:`) y piden `Numero de proyecto o nombre:`. Se elige por número, por el texto exacto de una opción o por el nombre de un proyecto o cliente existente, aunque esté archivado. Cualquier otra respuesta muestra `Opcion invalida.` y repite la pregunta. Las acciones van como opciones de la lista: `Crear proyecto`, `Crear cliente`, `Omitir` (sin cliente), `Mantener <proyecto>` (en `edit`).
 - **Confirmaciones.** `s`, `si`, `sí`, `y` o `yes` confirman; `n`, `no` o Enter cancelan.
-- **Valores por defecto.** Se muestran entre corchetes; Enter los conserva.
-- **Duraciones.** `1h`, `90m`, `1h30m`. Una duración inválida repite la pregunta.
+- **Valores por defecto.** No se muestran; Enter los conserva. Los comandos que editan lo avisan con `Enter conserva el valor actual.`.
+- **Validación.** Cada respuesta se valida al ingresarla: si no sirve, se muestra el motivo y se repite esa pregunta. Ver la regla en [arquitectura.md](arquitectura.md#errores-como-valores).
+- **Duraciones.** `1h`, `90m`, `1h30m`.
 - **Fechas.** `AAAA-MM-DD HH:MM` en `edit`, `AAAA-MM-DD` en `report --from/--to`, siempre en hora local.
 
 ## Sesión activa
@@ -27,47 +35,62 @@ Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()
 
 Interactivo, sin argumentos. Falla de entrada si ya hay una sesión activa.
 
-1. **Proyecto**: lista de proyectos activos. Si no hay ninguno, pide el nombre del primero.
-   - Un nombre de proyecto archivado ofrece desarchivarlo (y a su cliente, si también lo está).
-   - Un nombre nuevo crea el proyecto: pide **Cliente** (`(sin cliente)`, uno existente o uno nuevo) y **Descripción del proyecto** (opcional).
-2. **Duración**.
-3. **Trabajo de esta sesión** (opcional).
+1. **Proyecto**: lista de proyectos activos y `Crear proyecto`. Si no existe ningún proyecto, pide directamente el nombre del primero.
+   - El nombre de un proyecto archivado ofrece desarchivarlo y, si su cliente también está archivado, desarchivar el cliente. Responder que no cancela.
+   - `Crear proyecto` pide el nombre (no vacío ni repetido), el **cliente** (`Omitir`, uno existente, uno archivado escrito por nombre o `Crear cliente`) y la **Descripcion del proyecto** (opcional). El cliente nuevo se crea junto con el proyecto, al final.
+2. **Duracion**.
+3. **Trabajo realizado** (obligatorio).
 
 ```
-Sesión iniciada en web: 1:30, vence a las 11:30.
+Elige un proyecto:
+  1) web
+  2) Crear proyecto
+Numero de proyecto o nombre: 1
+Duracion (p. ej. 1h, 90m): 1h30m
+Trabajo realizado: Checkout con Mercado Pago
+Sesion iniciada en web: duracion 1h30m, vence a las 11:30.
 ```
 
 ### `tempo status`
 
 ```
-Proyecto:   web-tienda (Acme SRL)
-Estado:     corriendo, vence a las 11:30
-Restante:   1:12
-Trabajado:  0:18
-Trabajo:    Checkout con Mercado Pago
+Proyecto:          web-tienda (Acme SRL)
+Estado:            corriendo, vence a las 11:30
+Restante:          1h12m
+Trabajado:         18m
+Trabajo realizado: Checkout con Mercado Pago
 ```
 
-`Estado` puede ser `corriendo, vence a las HH:MM`, `pausada desde las HH:MM (hace H:MM)` o `vencida a las HH:MM`. El restante se redondea hacia arriba al minuto y el trabajado se trunca.
+`Estado` puede ser `corriendo, vence a las HH:MM`, `pausado desde las HH:MM (hace 25m)` o `vencido a las HH:MM (usa ...)`. El restante se redondea hacia arriba al minuto y el trabajado se trunca.
 
 ### `tempo pause` · `tempo resume`
 
-Sin argumentos. Fallan si no hay sesión, si ya está en ese estado o, para `pause`, si la sesión venció.
+Sin argumentos. Fallan si no hay sesión, si ya está en ese estado o, para `pause`, si la sesión venció. Los dos muestran el tiempo restante:
+
+```
+Sesion pausada. Restante: 1h12m.
+Sesion reanudada. Restante: 1h12m.
+```
 
 ### `tempo extend <duración>`
 
 Suma tiempo en cualquier estado. Sobre una sesión vencida, la reanuda desde ese momento sin contar el hueco.
 
+```
+Se agregaron 30m. Restante: 1h42m.
+```
+
 ### `tempo stop`
 
-Pregunta **Trabajo realizado** con la descripción actual como default y cierra la sesión.
+Sin preguntas: cierra la sesión con el trabajo realizado cargado en `start`.
 
 ```
-Sesión cerrada: 2026-11-09 10:00 → 2026-11-09 11:00, trabajado 1:00.
+Sesion cerrada: 2026-11-09 10:00 -> 2026-11-09 11:00, trabajado 1h.
 ```
 
 ## Sesiones pasadas
 
-### `tempo list [--project NOMBRE]... [--days N] [--limit N]`
+### `tempo list [--project NOMBRE]... [--days DIAS] [--limit CANTIDAD]`
 
 | Opción | Default | |
 |---|---|---|
@@ -75,54 +98,63 @@ Sesión cerrada: 2026-11-09 10:00 → 2026-11-09 11:00, trabajado 1:00.
 | `--days` | 7 | días hacia atrás desde ahora |
 | `--limit` | sin límite | las N más recientes, mostradas en orden cronológico |
 
-Columnas: id, Proyecto, Inicio, Fin (`en curso` si sigue abierta), Trabajado, Descripción (recortada al ancho de la terminal).
+Columnas: Id, Proyecto, Inicio, Fin (`en curso` si sigue abierta), Trabajado, Trabajo realizado (recortado al ancho de la terminal con `...`).
 
 ### `tempo edit <id>`
 
-Solo sesiones cerradas en meses no exportados. Pregunta Proyecto, Trabajo realizado, Inicio y Fin, cada uno con el valor actual como default.
+Solo sesiones cerradas en meses no exportados. Muestra la sesión con la misma tabla que `list` y pregunta, en orden:
+
+1. **Proyecto**: la lista de `start` con `Mantener <proyecto actual>` como primera opción.
+2. **Trabajo realizado** (obligatorio).
+3. **Inicio**: fecha válida y de un mes no exportado.
+4. **Fin**: fecha válida y posterior al inicio.
+
+Enter conserva el valor actual de los tres últimos.
 
 ### `tempo delete <id>`
 
-Muestra la sesión y pide confirmación. Rechaza sesiones de meses exportados.
+Muestra la sesión con la tabla de `list` y pide confirmación. Rechaza sesiones de meses exportados. Las pausas de la sesión se borran con ella.
 
 ## Proyectos y clientes
 
 ```
-tempo project add <nombre>                # pregunta cliente y descripción
+tempo project add <nombre>                # pregunta cliente y descripcion
 tempo project list [--archived]
-tempo project edit [nombre]               # pregunta nombre y descripción
-tempo project archive <nombre>
-tempo project unarchive <nombre>          # pregunta si reactivar el cliente, si está archivado
+tempo project edit [nombre]               # pregunta nombre y descripcion
+tempo project archive [nombre]
+tempo project unarchive [nombre]          # pregunta si desarchivar el cliente, si esta archivado
 
 tempo client add <nombre>
 tempo client list [--archived]
 tempo client edit [nombre]                # pregunta nombre
-tempo client archive <nombre>             # si tiene proyectos activos, los lista y pide confirmación
-tempo client unarchive <nombre>           # no reactiva los proyectos
+tempo client archive [nombre]             # si tiene proyectos activos, los lista y pide confirmacion
+tempo client unarchive [nombre]           # no desarchiva los proyectos
 ```
 
 Los nombres con espacios van entre comillas: `tempo project edit "web tienda"`.
 
-### `tempo project edit [nombre]` · `tempo client edit [nombre]`
+Sin nombre, `edit` y `archive` muestran la lista de activos y `unarchive` la de archivados; en la lista también se acepta el nombre de cualquier proyecto o cliente. Con nombre, actúan sobre ese, aunque esté archivado. Archivar algo archivado o desarchivar algo activo falla con un error del dominio.
 
-Con nombre, edita ese proyecto o cliente, aunque esté archivado. Sin nombre, muestra la lista de activos (`Proyectos:` o `Clientes:`) para elegir por número. Cada pregunta lleva el valor actual como default.
+`project add` valida el nombre antes de preguntar el resto.
+
+### `tempo project edit [nombre]` · `tempo client edit [nombre]`
 
 El cliente de un proyecto no se puede cambiar: `project edit` lo muestra como dato.
 
 ```
 Enter conserva el valor actual.
-Cliente: Acme SRL (no se puede cambiar)
-Nombre [web]: web-tienda
-Descripción del proyecto [Tienda online]:
+Cliente: Acme SRL
+Nombre: web-tienda
+Descripcion del proyecto:
 Proyecto 'web-tienda' actualizado.
 ```
 
-Fallan antes de preguntar si el proyecto, o algún proyecto del cliente (incluidos los archivados), tiene sesiones en un mes exportado. Como Enter conserva el default, una descripción no se puede dejar vacía.
+Fallan antes de preguntar si el proyecto, o algún proyecto del cliente (incluidos los archivados), tiene sesiones en un mes exportado. El nombre nuevo se valida al ingresarlo (no vacío ni de otro proyecto o cliente). Como Enter conserva el default, una descripción no se puede dejar vacía.
 
 ## Reportes
 
 ```
-tempo report [--project NOMBRE]... [--days N | --from AAAA-MM-DD [--to AAAA-MM-DD]]
+tempo report [--project NOMBRE]... [--days DIAS | --from AAAA-MM-DD [--to AAAA-MM-DD]]
 tempo report --month MES (--csv | --md) [--project NOMBRE]... [-o SALIDA]
 ```
 
@@ -131,12 +163,19 @@ tempo report --month MES (--csv | --md) [--project NOMBRE]... [-o SALIDA]
 | `--project` | Filtra; repetible. Al exportar, cambia el modo a export suelto |
 | `--days N` | Últimos N días (default 30) |
 | `--from` / `--to` | Rango de fechas; `--to` es inclusivo y exige `--from` |
-| `--month` | `N` (año actual) o `AAAA-MM`; solo meses cerrados |
+| `--month` | `N` (año actual) o `AAAA-MM`; solo meses terminados |
 | `--csv` / `--md` | Formato de exportación |
 | `-o` | Archivo de salida de un export suelto; relativo al directorio actual o absoluto |
 
-Sin `--month` imprime el reporte. Con `--month` solo escribe el archivo e imprime su ruta. Detalle en [reportes.md](reportes.md).
+Sin `--month` imprime el reporte. Con `--month` solo escribe el archivo e imprime su ruta; el export guardado (sin `--project`) avisa además que el mes quedó bloqueado:
 
-## Interno
+```
+Reporte guardado en /home/usuario/.local/tempo/reports/tempo-2026-10.md. El mes 2026-10 quedo bloqueado.
+Reporte guardado en /home/usuario/web.csv.
+```
 
-`tempo notifier` arranca el proceso de aviso. No aparece en `--help` y no está pensado para ejecutarse a mano; lo lanza el supervisor. Ver [notificaciones.md](notificaciones.md).
+Detalle en [reportes.md](reportes.md).
+
+## Proceso de aviso
+
+Los avisos los manda un proceso aparte, que el supervisor lanza con `python -m tempo.notifier_main`. No es un comando de la CLI. Ver [notificaciones.md](notificaciones.md).

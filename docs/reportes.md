@@ -47,9 +47,9 @@ tempo report --project web --project app           # combinable con cualquiera d
 
 `--days` no se combina con `--from`/`--to`, y `--to` exige `--from`.
 
-`TerminalRenderer(width)` imprime, por cada mes, un separador `── Mes AAAA ──`, la tabla de sesiones y `Total del mes`; después el resumen por proyecto (si corresponde) y el total general. Columnas: Inicio, Fin, Proyecto, Trabajado, Pausas, Duración, Trabajo realizado. Los tiempos van en `H:MM` truncado al minuto.
+`TerminalRenderer(width)` imprime, por cada mes, un separador `-- Mes AAAA --`, la tabla de sesiones y `Total del mes`; después el resumen por proyecto (si corresponde) y el total general. Columnas: Inicio, Fin, Proyecto, Trabajado, En pausa, Duracion, Trabajo realizado; el resumen: Proyecto, Cliente (vacío si no tiene), Sesiones, Trabajado. Va en ASCII, como el resto de la CLI. Los tiempos van como `1h30m`, `5m` o `2h` (`durations.format_duration`), truncados al minuto. `Duracion` es el tiempo transcurrido entre inicio y fin (`Trabajado` + `En pausa`).
 
-Cada mes calcula sus propios anchos de columna. Con `width`, la última columna (la descripción) se acota a `width - (ancho de las demás + separadores)`, con un mínimo de 10 caracteres, y se corta con `…`. Si el resto de las columnas ya no entra, la línea supera el ancho. `width=None` desactiva el recorte. La CLI pasa `Terminal.width()` (`shutil.get_terminal_size`, 80 columnas si la salida no es una terminal).
+Cada mes calcula sus propios anchos de columna. Con `width`, la última columna (la descripción) se acota a `width - (ancho de las demás + separadores)`, con un mínimo de 10 caracteres, y se corta con `...`. Si el resto de las columnas ya no entra, la línea supera el ancho. `width=None` desactiva el recorte. La CLI pasa `Terminal.width()` (`shutil.get_terminal_size`, 80 columnas si la salida no es una terminal).
 
 ## Exportación
 
@@ -135,15 +135,15 @@ id,proyecto,cliente,inicio,fin,horas_trabajadas,horas_pausa,descripcion
 
 ## Resumen por proyecto
 
-| Proyecto | Cliente | Sesiones | Horas |
+| Proyecto | Cliente | Sesiones | Trabajado |
 |---|---|---:|---:|
-| app-interna | — | 1 | 2:30 |
+| app-interna |  | 1 | 2:30 |
 | web-tienda | Acme SRL | 1 | 2:15 |
 | **Total** |  | **2** | **4:45** |
 
 ## Detalle de sesiones
 
-| Inicio | Fin | Proyecto | Trabajado | Pausas | Duración | Trabajo realizado |
+| Inicio | Fin | Proyecto | Trabajado | En pausa | Duración | Trabajo realizado |
 |---|---|---|---:|---:|---:|---|
 | 2026-10-01 09:00 | 2026-10-01 11:15 | web-tienda | 2:15 | 0:00 | 2:15 | Maquetado del carrito |
 | 2026-10-01 14:00 | 2026-10-01 16:30 | app-interna | 2:30 | 0:00 | 2:30 | Login con OAuth |
@@ -154,4 +154,5 @@ id,proyecto,cliente,inicio,fin,horas_trabajadas,horas_pausa,descripcion
 - El resumen aparece solo con más de un proyecto; su fila de total va en negrita.
 - Sin ids internos: el archivo está pensado para compartirse.
 - En las celdas, `|` se escapa como `\|` y los saltos de línea pasan a espacios.
-- El título usa el nombre del mes en castellano. Con más de un mes en el reporte diría `Período`, caso que la exportación nunca produce.
+- El título usa el nombre del mes en castellano. La exportación es siempre de un mes.
+- A diferencia de la terminal, mantiene la ortografía normal y los tiempos en `H:MM`.

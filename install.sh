@@ -12,7 +12,7 @@ target="${bin_dir}/tempo"
 data="${TEMPO_HOME:-$HOME/.local/tempo}"
 if [ -f "$data/notifier.pid" ]; then
   pid="$(cut -d' ' -f1 "$data/notifier.pid")"
-  if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "tempo notifier"; then
+  if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qE "tempo[ .]notifier"; then
     kill "$pid" && echo "Proceso de aviso anterior detenido."
   fi
 fi

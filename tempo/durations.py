@@ -35,6 +35,24 @@ def format_hm_up(seconds: int) -> str:
     return format_hm(max(seconds, 0) + 59)
 
 
+def format_duration(seconds: int) -> str:
+    """Segundos como "1h30m", "5m" o "2h": el mismo formato con que se escriben.
+
+    Minutos completos, sin redondear hacia arriba; las partes en cero se omiten
+    salvo que todo sea cero ("0m").
+    """
+    total_minutes = max(seconds, 0) // 60
+    hours, minutes = divmod(total_minutes, 60)
+    if hours and minutes:
+        return f"{hours}h{minutes}m"
+    return f"{hours}h" if hours else f"{minutes}m"
+
+
+def format_duration_up(seconds: int) -> str:
+    """Como format_duration pero redondeando hacia arriba: para tiempo restante."""
+    return format_duration(max(seconds, 0) + 59)
+
+
 def format_hours(seconds: int) -> str:
     """Segundos como horas decimales con 2 cifras, por ejemplo 5400 -> "1.50"."""
     return f"{max(seconds, 0) / 3600:.2f}"

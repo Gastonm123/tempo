@@ -1,6 +1,6 @@
 # Reglas y restricciones
 
-Cada regla indica dónde se hace cumplir. Las que valida la base son invariantes duras: ningún camino de código las puede romper. Las que valida `Tempo` se devuelven como `Err` con un tipo concreto. Las de la CLI son validaciones de entrada.
+Cada regla indica dónde se hace cumplir. Las que valida la base son invariantes duras: ningún camino de código las puede romper. Las que valida `Tempo` se devuelven como `Err` con un tipo concreto. Las de la CLI son validaciones de entrada: se hacen al ingresar cada respuesta, antes de llamar a `Tempo`, que igual las vuelve a validar.
 
 ## Sesiones
 
@@ -9,8 +9,9 @@ Cada regla indica dónde se hace cumplir. Las que valida la base son invariantes
 | A lo sumo una sesión abierta | base: índice parcial `one_active` | `SessionAlreadyActive` |
 | A lo sumo una pausa abierta por sesión | base: índice parcial `one_open_pause` | `AlreadyPaused` (validado antes en `Tempo`) |
 | `duration_s > 0` | base: `CHECK`; entrada: `durations.parse` | `InvalidDuration` |
-| `end_at >= start_at` en sesiones y pausas | base: `CHECK` | `InvalidInterval` en `edit` (validado antes en `Tempo`) |
+| `end_at >= start_at` en sesiones y pausas | base: `CHECK` | `InvalidInterval` en `edit` (validado antes en `Tempo` y en la CLI) |
 | No se inicia en un proyecto archivado | `Tempo.start` | `ProjectArchived` |
+| El trabajo realizado no es vacío (después de `strip()`) | `Tempo.start`, `Tempo.stop`, `Tempo.edit_session`; entrada: la CLI repregunta | `EmptyDescription` |
 | No se pausa una sesión vencida | `Tempo.pause` | `SessionExpired` |
 | Una sesión vencida queda detenida; el fin registrado es el vencimiento | `sessions.effective_end` | — |
 | El tiempo entre vencimiento y `extend` no cuenta | `Tempo.extend` (inserta una pausa) | — |
@@ -24,14 +25,15 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 
 | Regla | Dónde | Falla |
 |---|---|---|
-| Nombres no vacíos (después de `strip()`) | `Tempo` | `InvalidName` |
-| Nombres únicos, distinguiendo mayúsculas | base: `UNIQUE` | `NameTaken` |
+| Nombres no vacíos (después de `strip()`) | `Tempo`; entrada: la CLI repregunta | `InvalidName` |
+| Nombres únicos, distinguiendo mayúsculas | base: `UNIQUE`; entrada: la CLI repregunta | `ProjectNameTaken`, `ClientNameTaken` |
 | El cliente de un proyecto no cambia | base: trigger `project_client_immutable`; la API no ofrece la operación | `IntegrityError` |
 | El cliente es opcional | base: `client_id` admite `NULL` | — |
 | No se crea un proyecto para un cliente archivado | `Tempo.add_project` | `ClientArchived` |
 | Archivar un cliente con proyectos activos requiere `cascade=True` | `Tempo.archive_client` | `ClientHasActiveProjects` |
 | Desarchivar un proyecto de un cliente archivado requiere `with_client=True` | `Tempo.unarchive_project` | `ClientArchived` |
-| Desarchivar un cliente no reactiva sus proyectos | `Tempo.unarchive_client` | — |
+| Desarchivar un cliente no desarchiva sus proyectos | `Tempo.unarchive_client` | — |
+| No se archiva algo archivado ni se desarchiva algo activo | `Tempo.archive_*`, `Tempo.unarchive_*` | `ProjectArchived`, `ClientArchived`, `ProjectNotArchived`, `ClientNotArchived` |
 | No se edita un proyecto con sesiones en un mes exportado | `Tempo.edit_project` | `MonthLocked` |
 | No se edita un cliente si alguno de sus proyectos (activos o archivados) tiene sesiones en un mes exportado | `Tempo.edit_client` | `MonthLocked` |
 
@@ -39,7 +41,7 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 
 | Regla | Dónde | Falla |
 |---|---|---|
-| Solo se exportan meses cerrados | `Tempo.month_report` | `MonthNotClosed` |
+| Solo se exportan meses terminados | `Tempo.month_report` | `MonthNotClosed` |
 | No se exporta un mes con una sesión abierta que empezó en él | `Tempo.month_report` | `OpenSessionInMonth` |
 | No se exporta un mes vacío | `Tempo.month_report` | `EmptyMonth` |
 | Un reporte guardado bloquea el mes | `exports` + `Tempo.export_month` | — |
@@ -57,11 +59,11 @@ Duraciones válidas: `^\s*(\d+\s*h)?\s*(\d+\s*m)?\s*$`, sin distinguir mayúscul
 | El vencimiento se avisa una vez, y solo si el proceso lo vio venir | `Notifier` (estado armado en memoria) |
 | La alarma de vencimiento suena hasta 5 min y la cortan antes `extend` y `stop` | `Notifier` (alarma sonando en memoria) + `ExpirationTime` del toast |
 | La pausa larga se avisa a los 30 min y a la hora; un proceso que arranca tarde avisa una vez por los umbrales ya pasados | `Notifier` (avisos de pausa en memoria) |
-| `TEMPO_NO_NOTIFY=1` desactiva las notificaciones | `build_alerter` |
+| `TEMPO_NO_NOTIFY=1` desactiva las notificaciones | `notifier_main.build_alerter` |
 
 ## Opciones de la CLI
 
-Validadas en `validate_report_args` (salida con código 2):
+Validadas en `validate_report_args` (salida con código 2, con el uso de `tempo report`):
 
 - `--month` exige `--csv` o `--md`, que son excluyentes; `--csv`/`--md` sin `--month` es un error.
 - `-o` solo junto con `--month` y `--project`.

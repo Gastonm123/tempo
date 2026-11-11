@@ -6,20 +6,21 @@ Pensado para uso personal en Linux; las notificaciones están resueltas para WSL
 
 ```
 $ tempo start
-Proyectos:
+Elige un proyecto:
   1) web-tienda
   2) app-interna
-Proyecto (número o nombre nuevo): 1
-Duración (p. ej. 1h, 90m, 1h30m): 1h30m
-Trabajo de esta sesión: Checkout con Mercado Pago
-Sesión iniciada en web-tienda: 1:30, vence a las 11:30.
+  3) Crear proyecto
+Numero de proyecto o nombre: 1
+Duracion (p. ej. 1h, 90m): 1h30m
+Trabajo realizado: Checkout con Mercado Pago
+Sesion iniciada en web-tienda: duracion 1h30m, vence a las 11:30.
 
 $ tempo status
-Proyecto:   web-tienda (Acme SRL)
-Estado:     corriendo, vence a las 11:30
-Restante:   1:12
-Trabajado:  0:18
-Trabajo:    Checkout con Mercado Pago
+Proyecto:          web-tienda (Acme SRL)
+Estado:            corriendo, vence a las 11:30
+Restante:          1h12m
+Trabajado:         18m
+Trabajo realizado: Checkout con Mercado Pago
 ```
 
 ## Instalación
@@ -36,15 +37,15 @@ Los datos viven en `~/.local/tempo/` (base SQLite, reportes guardados y archivos
 
 | Comando | |
 |---|---|
-| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo de esta sesión |
+| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo realizado |
 | `tempo status` | Estado y tiempo restante de la sesión activa |
 | `tempo pause` / `resume` | Pausa y reanuda; el tiempo pausado no cuenta |
 | `tempo extend 30m` | Suma tiempo, incluso a una sesión vencida |
-| `tempo stop` | Cierra la sesión y permite corregir la descripción |
+| `tempo stop` | Cierra la sesión con el trabajo realizado cargado al iniciarla |
 | `tempo list` | Sesiones de los últimos 7 días |
 | `tempo edit ID` / `delete ID` | Corrige o borra una sesión cerrada |
 | `tempo report` | Horas de los últimos 30 días, agrupadas por mes |
-| `tempo report --month 10 --csv` | Exporta un mes cerrado |
+| `tempo report --month 10 --csv` | Exporta un mes terminado y lo bloquea |
 | `tempo project …` / `client …` | `add`, `list`, `edit`, `archive`, `unarchive` |
 
 La referencia completa está en [docs/cli.md](docs/cli.md).

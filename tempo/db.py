@@ -20,7 +20,14 @@ from pathlib import Path
 from typing import Protocol
 
 from tempo.models import Client, Pause, Project, Session
-from tempo.result import Err, NameTaken, Ok, Result, SessionAlreadyActive
+from tempo.result import (
+    ClientNameTaken,
+    Err,
+    Ok,
+    ProjectNameTaken,
+    Result,
+    SessionAlreadyActive,
+)
 from tempo.sessions import Span
 
 SCHEMA_VERSION = 1
@@ -97,17 +104,17 @@ class Store(Protocol):
         ...
 
     # Clientes
-    def add_client(self, name: str) -> Result[Client, NameTaken]: ...
+    def add_client(self, name: str) -> Result[Client, ClientNameTaken]: ...
     def get_client(self, client_id: int) -> Client | None: ...
     def find_client(self, name: str) -> Client | None: ...
     def list_clients(self, *, include_archived: bool) -> list[Client]: ...
-    def rename_client(self, client_id: int, name: str) -> Result[None, NameTaken]: ...
+    def rename_client(self, client_id: int, name: str) -> Result[None, ClientNameTaken]: ...
     def set_client_archived(self, client_id: int, archived: bool) -> None: ...
 
     # Proyectos
     def add_project(
         self, name: str, client_id: int | None, description: str
-    ) -> Result[Project, NameTaken]: ...
+    ) -> Result[Project, ProjectNameTaken]: ...
     def get_project(self, project_id: int) -> Project | None: ...
     def find_project(self, name: str) -> Project | None: ...
     def list_projects(
@@ -115,7 +122,7 @@ class Store(Protocol):
     ) -> list[Project]: ...
     def update_project(
         self, project_id: int, *, name: str, description: str
-    ) -> Result[None, NameTaken]: ...
+    ) -> Result[None, ProjectNameTaken]: ...
     def set_project_archived(self, project_id: int, archived: bool) -> None: ...
 
     # Sesiones
@@ -205,12 +212,12 @@ class SqliteStore(Store):
     def _client(row: sqlite3.Row) -> Client:
         return Client(id=row["id"], name=row["name"], archived=bool(row["archived"]))
 
-    def add_client(self, name: str) -> Result[Client, NameTaken]:
+    def add_client(self, name: str) -> Result[Client, ClientNameTaken]:
         try:
             cursor = self._conn.execute("INSERT INTO clients(name) VALUES (?)", (name,))
         except sqlite3.IntegrityError as error:
             if "clients.name" in str(error):
-                return Err(NameTaken(name))
+                return Err(ClientNameTaken(name))
             raise
         assert cursor.lastrowid is not None
         return Ok(Client(id=cursor.lastrowid, name=name, archived=False))
@@ -229,12 +236,12 @@ class SqliteStore(Store):
             sql += " WHERE archived = 0"
         return [self._client(row) for row in self._conn.execute(sql + " ORDER BY name")]
 
-    def rename_client(self, client_id: int, name: str) -> Result[None, NameTaken]:
+    def rename_client(self, client_id: int, name: str) -> Result[None, ClientNameTaken]:
         try:
             self._conn.execute("UPDATE clients SET name = ? WHERE id = ?", (name, client_id))
         except sqlite3.IntegrityError as error:
             if "clients.name" in str(error):
-                return Err(NameTaken(name))
+                return Err(ClientNameTaken(name))
             raise
         return Ok(None)
 
@@ -263,7 +270,7 @@ class SqliteStore(Store):
 
     def add_project(
         self, name: str, client_id: int | None, description: str
-    ) -> Result[Project, NameTaken]:
+    ) -> Result[Project, ProjectNameTaken]:
         try:
             cursor = self._conn.execute(
                 "INSERT INTO projects(name, client_id, description) VALUES (?, ?, ?)",
@@ -271,7 +278,7 @@ class SqliteStore(Store):
             )
         except sqlite3.IntegrityError as error:
             if "projects.name" in str(error):
-                return Err(NameTaken(name))
+                return Err(ProjectNameTaken(name))
             raise
         assert cursor.lastrowid is not None
         project = self.get_project(cursor.lastrowid)
@@ -305,7 +312,7 @@ class SqliteStore(Store):
 
     def update_project(
         self, project_id: int, *, name: str, description: str
-    ) -> Result[None, NameTaken]:
+    ) -> Result[None, ProjectNameTaken]:
         try:
             self._conn.execute(
                 "UPDATE projects SET name = ?, description = ? WHERE id = ?",
@@ -313,7 +320,7 @@ class SqliteStore(Store):
             )
         except sqlite3.IntegrityError as error:
             if "projects.name" in str(error):
-                return Err(NameTaken(name))
+                return Err(ProjectNameTaken(name))
             raise
         return Ok(None)
 

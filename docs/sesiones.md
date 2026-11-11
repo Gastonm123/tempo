@@ -69,6 +69,7 @@ Todas siguen el mismo patrón, dentro de una única transacción `BEGIN IMMEDIAT
 |---|---|
 | `ProjectNotFound(str(project_id))` | el proyecto no existe |
 | `ProjectArchived(nombre)` | el proyecto está archivado |
+| `EmptyDescription()` | la descripción queda vacía después de `strip()` |
 | `SessionAlreadyActive(id_activa)` | el `INSERT` viola `one_active` |
 
 Escribe `start_at = clock.now()` y `description.strip()`. La sesión activa se detecta en el `INSERT` y no antes: `SqliteStore.add_session` traduce el `IntegrityError` de `one_active`. `duration_s` debe ser positiva (`CHECK (duration_s > 0)`); la CLI lo garantiza con `durations.parse`.
@@ -105,13 +106,13 @@ El paso 1 hace que el tiempo entre el vencimiento y la respuesta del usuario no 
 
 Sobre una sesión pausada solo suma duración; el vencimiento se vuelve a calcular al reanudar. `seconds` no se valida en `Tempo`: un valor que deje `duration_s <= 0` viola el `CHECK` y termina con `IntegrityError`.
 
-### `stop(description) -> Result[Session, NoActiveSession]`
+### `stop(description) -> Result[Session, NoActiveSession | EmptyDescription]`
 
 1. `end = effective_end(...)`: ahora, o el vencimiento si ya pasó. Una sesión de 1 h iniciada a las 10:00 y detenida a las 11:40 queda registrada de 10:00 a 11:00.
 2. Si está pausada, cierra la pausa en `end` (que en ese caso es `now`: una sesión pausada no puede estar vencida).
-3. `end_at = end`; la descripción se conserva si `description is None` y se reemplaza por `description.strip()` en otro caso.
+3. `end_at = end`; la descripción se conserva si `description is None` y se reemplaza por `description.strip()` en otro caso, que no puede quedar vacía (`EmptyDescription`).
 
-La CLI pasa siempre un string: muestra la descripción actual como default y Enter la conserva.
+La CLI pasa siempre `None`: `tempo stop` no pregunta y cierra con la descripción cargada en `start`.
 
 ### Concurrencia
 
@@ -128,6 +129,7 @@ La validación y la escritura de cada operación corren en una sola transacción
 | `MonthLocked(mes)` | el mes local del inicio original está bloqueado; después, el del inicio nuevo |
 | `InvalidInterval(start, end)` | `end_at <= start_at` |
 | `ProjectNotFound(str(project_id))` | el proyecto no existe (archivado está permitido) |
+| `EmptyDescription()` | la descripción queda vacía después de `strip()` |
 
 En una transacción reemplaza proyecto, descripción, inicio y fin, y reescribe las pausas recortadas al intervalo nuevo:
 
@@ -137,15 +139,15 @@ pausa' = [max(inicio_p, start_at), min(fin_p, end_at)]   para toda pausa con fin
 
 Las que quedan afuera se descartan. `duration_s` no cambia: es la duración planificada.
 
-La CLI verifica el bloqueo del mes antes de preguntar, pide cada campo con el valor actual como default (fechas `AAAA-MM-DD HH:MM`, hora local) y resuelve el proyecto por nombre. Si otro proceso modifica la sesión mientras la persona responde, la edición lo pisa: es un [riesgo aceptado](api/persistencia.md#riesgo-aceptado-edición-concurrente).
+La CLI verifica el bloqueo del mes antes de preguntar, elige el proyecto con la lista de `start` (con `Mantener` como primera opción) y pide los demás campos con el valor actual como default (fechas `AAAA-MM-DD HH:MM`, hora local). Valida cada respuesta al ingresarla: descripción no vacía, fecha bien escrita, inicio en un mes no bloqueado y fin posterior al inicio. Si otro proceso modifica la sesión mientras la persona responde, la edición lo pisa: es un [riesgo aceptado](api/persistencia.md#riesgo-aceptado-edición-concurrente).
 
 ### `delete_session(id) -> Result[None, SessionNotFound | MonthLocked]`
 
-Borra la sesión; sus pausas caen por `ON DELETE CASCADE`. El bloqueo se evalúa sobre el mes local del inicio. No distingue sesiones abiertas: borrar la activa la descarta. La CLI muestra la sesión y pide confirmación (default: no).
+Borra la sesión; sus pausas caen por `ON DELETE CASCADE`. El bloqueo se evalúa sobre el mes local del inicio. No distingue sesiones abiertas: borrar la activa la descarta. La CLI muestra la sesión en una tabla con encabezados y pide confirmación (default: no).
 
 ## Proyectos, clientes y archivado
 
-Un proyecto tiene nombre único, descripción y un cliente opcional (`client_id NULL`). El cliente se fija al crear el proyecto: el trigger `project_client_immutable` aborta cualquier `UPDATE` de `client_id`, y la API no ofrece la operación. Los nombres se normalizan con `strip()`; vacíos dan `InvalidName`, repetidos `NameTaken`. La unicidad distingue mayúsculas (`COLLATE BINARY`).
+Un proyecto tiene nombre único, descripción y un cliente opcional (`client_id NULL`). El cliente se fija al crear el proyecto: el trigger `project_client_immutable` aborta cualquier `UPDATE` de `client_id`, y la API no ofrece la operación. Los nombres se normalizan con `strip()`; vacíos dan `InvalidName`, repetidos `ProjectNameTaken` o `ClientNameTaken`. La unicidad distingue mayúsculas (`COLLATE BINARY`).
 
 Renombrar clientes y proyectos está permitido aunque aparezcan en meses exportados: el bloqueo protege las horas, no los nombres. Un re-export muestra el nombre nuevo.
 
@@ -153,14 +155,14 @@ Archivar oculta de las listas de selección (`start`, elección de cliente al cr
 
 | Operación | Validación | Efecto |
 |---|---|---|
-| `archive_project(id)` | `ProjectNotFound` | marca el proyecto |
-| `archive_client(id, cascade=False)` | `ClientNotFound`; `ClientHasActiveProjects(nombres)` si tiene proyectos activos | marca el cliente |
-| `archive_client(id, cascade=True)` | `ClientNotFound` | en una transacción archiva sus proyectos activos y el cliente; devuelve los proyectos afectados |
-| `unarchive_client(id)` | `ClientNotFound` | reactiva solo el cliente |
-| `unarchive_project(id, with_client=False)` | `ProjectNotFound`; `ClientArchived(nombre)` si el cliente está archivado | reactiva el proyecto |
-| `unarchive_project(id, with_client=True)` | `ProjectNotFound` | reactiva cliente y proyecto en una transacción |
-| `add_project(nombre, client_id, desc)` | `InvalidName`; `ClientNotFound`; `ClientArchived`; `NameTaken` | crea el proyecto |
+| `archive_project(id)` | `ProjectNotFound`; `ProjectArchived` si ya está archivado | marca el proyecto |
+| `archive_client(id, cascade=False)` | `ClientNotFound`; `ClientArchived` si ya está archivado; `ClientHasActiveProjects(nombres)` si tiene proyectos activos | marca el cliente |
+| `archive_client(id, cascade=True)` | `ClientNotFound`; `ClientArchived` | en una transacción archiva sus proyectos activos y el cliente; devuelve los proyectos afectados |
+| `unarchive_client(id)` | `ClientNotFound`; `ClientNotArchived` si está activo | desarchiva solo el cliente |
+| `unarchive_project(id, with_client=False)` | `ProjectNotFound`; `ProjectNotArchived` si está activo; `ClientArchived(nombre)` si el cliente está archivado | desarchiva el proyecto |
+| `unarchive_project(id, with_client=True)` | `ProjectNotFound`; `ProjectNotArchived` | desarchiva cliente y proyecto en una transacción |
+| `add_project(nombre, client_id, desc)` | `InvalidName`; `ClientNotFound`; `ClientArchived`; `ProjectNameTaken` | crea el proyecto |
 
-`unarchive_client` no reactiva proyectos porque no hay registro de cuáles se archivaron en cascada y cuáles ya estaban archivados.
+`unarchive_client` no desarchiva proyectos porque no hay registro de cuáles se archivaron en cascada y cuáles ya estaban archivados.
 
-La CLI consulta antes de decidir: `client archive` lista los proyectos activos y llama con `cascade=True` solo si se confirma; `project unarchive` y `start` (al elegir un proyecto archivado por nombre) preguntan si reactivar también el cliente. Escribir en `start` el nombre de un cliente archivado al crear un proyecto falla con `ClientArchived`, sin ofrecer reactivarlo.
+La CLI consulta antes de decidir: `client archive` lista los proyectos activos y llama con `cascade=True` solo si se confirma; `project unarchive` y `start` (al elegir un proyecto archivado por nombre) preguntan si desarchivar también el cliente. En `start`, escribir el nombre de un cliente archivado al crear un proyecto ofrece desarchivarlo; responder que no cancela.

@@ -3,7 +3,7 @@ import unittest
 from datetime import timedelta
 
 from tempo.db import SqliteStore
-from tempo.result import Err, NameTaken
+from tempo.result import ClientNameTaken, Err, ProjectNameTaken
 from tempo.sessions import Interval
 from tests.helpers import HOUR, at, ok
 
@@ -14,9 +14,9 @@ class SchemaRulesTest(unittest.TestCase):
         self.project = ok(self.store.add_project("web", None, ""))
 
     def test_unique_names(self) -> None:
-        self.assertEqual(self.store.add_project("web", None, ""), Err(NameTaken("web")))
+        self.assertEqual(self.store.add_project("web", None, ""), Err(ProjectNameTaken("web")))
         ok(self.store.add_client("Acme"))
-        self.assertEqual(self.store.add_client("Acme"), Err(NameTaken("Acme")))
+        self.assertEqual(self.store.add_client("Acme"), Err(ClientNameTaken("Acme")))
 
     def test_project_client_is_immutable(self) -> None:
         acme = ok(self.store.add_client("Acme"))
@@ -26,6 +26,13 @@ class SchemaRulesTest(unittest.TestCase):
             self.store._conn.execute(
                 "UPDATE projects SET client_id = ? WHERE id = ?", (other.id, project.id)
             )
+
+    def test_deleting_a_session_deletes_its_pauses(self) -> None:
+        session = ok(self.store.add_session(self.project.id, "x", at(11, 9, 10), HOUR))
+        self.store.open_pause(session.id, at(11, 9, 10, 10))
+        self.store.delete_session(session.id)
+        count = self.store._conn.execute("SELECT COUNT(*) FROM pauses").fetchone()[0]
+        self.assertEqual(count, 0)
 
     def test_transaction_rolls_back_on_crash(self) -> None:
         with self.assertRaises(RuntimeError):

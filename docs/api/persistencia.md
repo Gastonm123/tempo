@@ -174,21 +174,21 @@ Los métodos de escritura no abren transacciones propias: las agrupa quien llama
 
 | Método | Notas |
 |---|---|
-| `add_client(name) -> Result[Client, NameTaken]` | `IntegrityError` sobre `clients.name` → `NameTaken` |
+| `add_client(name) -> Result[Client, ClientNameTaken]` | `IntegrityError` sobre `clients.name` → `ClientNameTaken` |
 | `get_client(id) -> Client \| None` | |
 | `find_client(name) -> Client \| None` | Búsqueda exacta, incluye archivados |
 | `list_clients(*, include_archived) -> list[Client]` | Ordenados por nombre |
-| `rename_client(id, name) -> Result[None, NameTaken]` | |
+| `rename_client(id, name) -> Result[None, ClientNameTaken]` | |
 | `set_client_archived(id, archived)` | |
 
 ### Proyectos
 
 | Método | Notas |
 |---|---|
-| `add_project(name, client_id, description) -> Result[Project, NameTaken]` | |
+| `add_project(name, client_id, description) -> Result[Project, ProjectNameTaken]` | `IntegrityError` sobre `projects.name` → `ProjectNameTaken` |
 | `get_project(id)`, `find_project(name) -> Project \| None` | `client_name` viene de un `LEFT JOIN` |
 | `list_projects(*, include_archived, client_id=None) -> list[Project]` | Filtro opcional por cliente; ordenados por nombre |
-| `update_project(id, *, name, description) -> Result[None, NameTaken]` | El cliente no se toca |
+| `update_project(id, *, name, description) -> Result[None, ProjectNameTaken]` | El cliente no se toca |
 | `set_project_archived(id, archived)` | |
 
 ### Sesiones
