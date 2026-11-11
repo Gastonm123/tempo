@@ -12,7 +12,7 @@ Elige un proyecto:
   3) Crear proyecto
 Numero de proyecto o nombre: 1
 Duracion (p. ej. 1h, 90m): 1h30m
-Trabajo realizado: Checkout con Mercado Pago
+Trabajo de esta sesion: Checkout con Mercado Pago
 Sesion iniciada en web-tienda: duracion 1h30m, vence a las 11:30.
 
 $ tempo status
@@ -37,7 +37,7 @@ Los datos viven en `~/.local/tempo/` (base SQLite, reportes guardados y archivos
 
 | Comando | |
 |---|---|
-| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo realizado |
+| `tempo start` | Inicia una sesión; pregunta proyecto, duración y trabajo de esta sesión |
 | `tempo status` | Estado y tiempo restante de la sesión activa |
 | `tempo pause` / `resume` | Pausa y reanuda; el tiempo pausado no cuenta |
 | `tempo extend 30m` | Suma tiempo, incluso a una sesión vencida |

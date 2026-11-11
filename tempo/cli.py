@@ -415,7 +415,7 @@ def cmd_start(app: Deps, args: argparse.Namespace) -> int:
         case Ok(project):
             pass
     seconds = term.duration("Duracion")
-    description = term.text("Trabajo realizado", validate=as_validator(description_error))
+    description = term.text("Trabajo de esta sesion", validate=as_validator(description_error))
     match tempo.start(project.id, seconds, description):
         case Err(error):
             return fail(term, error)

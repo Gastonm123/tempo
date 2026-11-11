@@ -39,7 +39,7 @@ Interactivo, sin argumentos. Falla de entrada si ya hay una sesión activa.
    - El nombre de un proyecto archivado ofrece desarchivarlo y, si su cliente también está archivado, desarchivar el cliente. Responder que no cancela.
    - `Crear proyecto` pide el nombre (no vacío ni repetido), el **cliente** (`Omitir`, uno existente, uno archivado escrito por nombre o `Crear cliente`) y la **Descripcion del proyecto** (opcional). El cliente nuevo se crea junto con el proyecto, al final.
 2. **Duracion**.
-3. **Trabajo realizado** (obligatorio).
+3. **Trabajo de esta sesion** (obligatorio). Es el "trabajo realizado" de la sesión: la pregunta usa otro nombre porque se responde al empezar, pero `status`, `list`, `edit` y los reportes lo muestran como "Trabajo realizado".
 
 ```
 Elige un proyecto:
@@ -47,7 +47,7 @@ Elige un proyecto:
   2) Crear proyecto
 Numero de proyecto o nombre: 1
 Duracion (p. ej. 1h, 90m): 1h30m
-Trabajo realizado: Checkout con Mercado Pago
+Trabajo de esta sesion: Checkout con Mercado Pago
 Sesion iniciada en web: duracion 1h30m, vence a las 11:30.
 ```
 
