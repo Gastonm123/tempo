@@ -47,7 +47,7 @@ tempo report --project web --project app           # combinable con cualquiera d
 
 `--days` no se combina con `--from`/`--to`, y `--to` exige `--from`.
 
-`TerminalRenderer(width)` imprime, por cada mes, un separador `-- Mes AAAA --`, la tabla de sesiones y `Total del mes`; después el resumen por proyecto (si corresponde) y el total general. Columnas: Inicio, Fin, Proyecto, Trabajado, En pausa, Duracion, Trabajo realizado; el resumen: Proyecto, Cliente (vacío si no tiene), Sesiones, Trabajado. Va en ASCII, como el resto de la CLI. Los tiempos van como `1h30m`, `5m` o `2h` (`durations.format_duration`), truncados al minuto. `Duracion` es el tiempo transcurrido entre inicio y fin (`Trabajado` + `En pausa`).
+`TerminalRenderer(width)` imprime, por cada mes, un separador `── Mes AAAA ──`, la tabla de sesiones y `Total del mes`; después el resumen por proyecto (si corresponde) y el total general. Columnas: Inicio, Fin, Proyecto, Trabajado, En pausa, Duracion, Trabajo realizado; el resumen: Proyecto, Cliente (vacío si no tiene), Sesiones, Trabajado. Va en ASCII, como el resto de la CLI, salvo los separadores `──`. Los tiempos van como `1h30m`, `5m` o `2h` (`durations.format_duration`), truncados al minuto. `Duracion` es el tiempo transcurrido entre inicio y fin (`Trabajado` + `En pausa`).
 
 Cada mes calcula sus propios anchos de columna. Con `width`, la última columna (la descripción) se acota a `width - (ancho de las demás + separadores)`, con un mínimo de 10 caracteres, y se corta con `...`. Si el resto de las columnas ya no entra, la línea supera el ancho. `width=None` desactiva el recorte. La CLI pasa `Terminal.width()` (`shutil.get_terminal_size`, 80 columnas si la salida no es una terminal).
 

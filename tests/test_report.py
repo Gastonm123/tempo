@@ -73,8 +73,8 @@ class BuildAndRenderTest(unittest.TestCase):
 
     def test_terminal_groups_by_month(self) -> None:
         text = render_to_text(TerminalRenderer(), self.rig.tempo.report(at(9, 1, 0), at(11, 1, 0)))
-        self.assertIn("-- Septiembre 2026 --", text)
-        self.assertIn("-- Octubre 2026 --", text)
+        self.assertIn("── Septiembre 2026 ──", text)
+        self.assertIn("── Octubre 2026 ──", text)
         self.assertIn("Total del mes: 3h30m", text)
         self.assertIn("Total: 6h30m", text)
         self.assertIn("2026-09-30 22:00  2026-10-01 01:00", text)

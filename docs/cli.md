@@ -15,7 +15,7 @@ Los errores van a stderr con el prefijo `Error: ` y el mensaje de `cli.message()
 
 ## Textos
 
-- Los mensajes, preguntas y la ayuda de la CLI van en ASCII, sin tildes; se conservan la `ñ`, `¿` y `¡`. Los reportes exportados (Markdown, CSV) y las notificaciones de escritorio usan la ortografía normal.
+- Los mensajes, preguntas y la ayuda de la CLI van en ASCII, sin tildes; se conservan la `ñ`, `¿`, `¡` y los separadores `──` del reporte. Los reportes exportados (Markdown, CSV) y las notificaciones de escritorio usan la ortografía normal.
 - Un adjetivo sin sustantivo escrito va en masculino (`Estado: pausado`); con sustantivo, concuerda (`Sesion pausada`).
 - Las duraciones se muestran como se escriben: `1h30m`, `5m`, `2h`. El Markdown exportado usa `H:MM` y el CSV horas decimales.
 - Causa y sugerencia se separan con un punto: `La sesion vencio a las 15:30. Usa ...`.

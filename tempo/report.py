@@ -241,13 +241,13 @@ class TerminalRenderer(Renderer):
             out.write("No hay sesiones en el periodo.\n")
             return
         for group in report.months:
-            out.write(f"\n-- {month_title(group.month)} --\n")
+            out.write(f"\n── {month_title(group.month)} ──\n")
             rows = [_detail_cells(r, format_duration) for r in group.rows]
             for text in text_table(_TERMINAL_HEADERS, rows, _TIME_COLUMNS, self._width):
                 out.write(text + "\n")
             out.write(f"Total del mes: {format_duration(group.worked_s)}\n")
         if report.summary:
-            out.write("\n-- Resumen por proyecto --\n")
+            out.write("\n── Resumen por proyecto ──\n")
             cells = [[p.project, p.client or "", str(p.sessions), format_duration(p.worked_s)]
                      for p in report.summary]
             for text in text_table(_SUMMARY_HEADERS, cells, {2, 3}):

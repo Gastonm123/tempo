@@ -661,7 +661,7 @@ def cmd_project_list(app: Deps, args: argparse.Namespace) -> int:
     if not projects:
         app.terminal.write("No hay proyectos.")
         return 0
-    rows = [[p.name, p.client_name or "—", "archivado" if p.archived else "activo",
+    rows = [[p.name, p.client_name or "", "archivado" if p.archived else "activo",
              p.description] for p in projects]
     for line in text_table(("Proyecto", "Cliente", "Estado", "Descripcion"), rows, set(),
                            app.terminal.width()):
@@ -960,7 +960,7 @@ def build_parser(list_days: int, report_days: int) -> argparse.ArgumentParser:
         return sub
 
     session_id = "numero de la sesion (ver `tempo list`)"
-    add("start", cmd_start, "iniciar una sesion (pregunta proyecto, duracion y trabajo realizado)")
+    add("start", cmd_start, "iniciar una sesion")
     add("status", cmd_status, "ver el estado y el tiempo restante de la sesion activa")
     add("pause", cmd_pause, "pausar la sesion activa")
     add("resume", cmd_resume, "reanudar la sesion pausada")
