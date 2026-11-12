@@ -13,7 +13,10 @@ Elige un proyecto:
 Numero de proyecto o nombre: 1
 Duracion (p. ej. 1h, 90m): 1h30m
 Trabajo de esta sesion: Checkout con Mercado Pago
-Sesion iniciada en web-tienda: duracion 1h30m, vence a las 11:30.
+Sesion iniciada.
+  Proyecto: web-tienda (Acme SRL)
+  Duracion: 1h30m
+  Vence:    11:30
 
 $ tempo status
 Proyecto:          web-tienda (Acme SRL)

@@ -26,7 +26,10 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Elige un cliente:\n  1) Omitir\n  2) Crear cliente\n", term.output)
         self.assertIn("  El trabajo realizado no puede estar vacio.", term.lines)
-        self.assertIn("Sesion iniciada en web: duracion 1h30m, vence a las 11:30.", term.output)
+        self.assertIn("Sesion iniciada.\n"
+                      "  Proyecto: web (Acme)\n"
+                      "  Duracion: 1h30m\n"
+                      "  Vence:    11:30", term.output)
         project = ok(self.rig.tempo.find_project("web"))
         self.assertEqual((project.client_name, project.description), ("Acme", "Tienda online"))
 

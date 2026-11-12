@@ -211,8 +211,13 @@ def describe_status(tempo: Tempo, active: ActiveStatus) -> list[str]:
     lines.append(("Restante", format_duration_up(state.remaining_s)))
     lines.append(("Trabajado", format_duration(state.worked_s)))
     lines.append(("Trabajo realizado", session.description))
-    width = max(len(label) for label, _ in lines) + 2
-    return [f"{label + ':':<{width}}{value}" for label, value in lines]
+    return align_fields(lines)
+
+
+def align_fields(fields: Sequence[tuple[str, str]], indent: str = "") -> list[str]:
+    """Una linea "Etiqueta: valor" por campo, con los valores alineados."""
+    width = max(len(label) for label, _ in fields) + 2
+    return [f"{indent}{label + ':':<{width}}{value}" for label, value in fields]
 
 
 def write_block(term: Terminal, text: str) -> None:
@@ -421,8 +426,13 @@ def cmd_start(app: Deps, args: argparse.Namespace) -> int:
             return fail(term, error)
         case Ok(active):
             assert active.state.expires_at is not None
-            term.write(f"Sesion iniciada en {project.name}: duracion {format_duration(seconds)},"
-                       f" vence a las {tempo.local(active.state.expires_at):%H:%M}.")
+            client = f" ({project.client_name})" if project.client_name else ""
+            term.write("Sesion iniciada.")
+            for line in align_fields([("Proyecto", f"{project.name}{client}"),
+                                      ("Duracion", format_duration(seconds)),
+                                      ("Vence", f"{tempo.local(active.state.expires_at):%H:%M}")],
+                                     indent="  "):
+                term.write(line)
             return 0
 
 
